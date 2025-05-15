@@ -12,30 +12,30 @@
 #include <errno.h>      
 
 #define DEFAULT_PORT 8080
+#define START 01111110
 
 // Message types
-#define ACK 0x00
-#define NAK 0x01
-#define OK_ACK 0x02
-#define SIZE 0x04
-#define DATA 0x05
-#define TEXT_ACK_NAME 0x06
-#define VIDEO_ACK_NAME 0x07
-#define IMAGE_ACK_NAME 0x08
-#define END 0x09
-#define RIGHT 0x0A
-#define UP 0x0B
-#define DOWN 0x0C
-#define LEFT 0x0D
-#define ERROR 0x0F
+#define ACK 0000
+#define NAK 0001
+#define OK_ACK 0002
+#define SIZE 0004
+#define DATA 0005
+#define TEXT_ACK_NAME 0006
+#define VIDEO_ACK_NAME 0007
+#define IMAGE_ACK_NAME 0008
+#define END 0009
+#define RIGHT 0010
+#define UP 0011
+#define DOWN 0012
+#define LEFT 0013
+#define ERROR 0015
 
 // Error types
-#define PERMISSION_DENIED 0x00
-#define NO_SPACE 0x01
+#define PERMISSION_DENIED 0000
+#define NO_SPACE 0001
 
 #define MAX_DATA_SIZE 1024
 
-#define START 01111110
 #define START_SIZE 8
 #define SIZE_SIZE 7
 #define SEQUENCE_SIZE 5
@@ -54,6 +54,7 @@ typedef struct {
 
 // api
 int create_raw_socket();
+void destroy_raw_socket(int sock);
 int bind_raw_socket(int sock, char* interface, int port);
 void connect_raw_socket(int sock, char* interface, unsigned char address[6]);
 void send_package(int sock, char* interface, unsigned char dest_mac[6], const unsigned char* message);
@@ -61,7 +62,6 @@ void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender
 
 kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned char sequence[SEQUENCE_SIZE], unsigned char type[TYPE_SIZE], unsigned char* data);
 void destroy_header(kermit_protocol_header* header);
-void destroy_raw_socket(int sock);
 
 const unsigned char* generate_message(kermit_protocol_header* header);
 
