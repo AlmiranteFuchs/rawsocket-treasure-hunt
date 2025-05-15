@@ -33,15 +33,23 @@
 #define PERMISSION_DENIED 0x00
 #define NO_SPACE 0x01
 
+#define MAX_DATA_SIZE 1024
+
+#define START 01111110
+#define START_SIZE 8
+#define SIZE_SIZE 7
+#define SEQUENCE_SIZE 5
+#define TYPE_SIZE 4
+#define CHECKSUM_SIZE 8
 
 // Kermit protocol header
 typedef struct {
-    unsigned char start[8];
-    unsigned char size[7];
-    unsigned char sequence[5];
-    unsigned char type[4];
-    unsigned char checksum[8];
-    unsigned char data[1016];
+    unsigned char start[START_SIZE];
+    unsigned char size[SIZE_SIZE];
+    unsigned char sequence[SEQUENCE_SIZE];
+    unsigned char type[TYPE_SIZE];
+    unsigned char checksum[CHECKSUM_SIZE];
+    unsigned char* data;
 } kermit_protocol_header;
 
 // api
@@ -50,5 +58,11 @@ int bind_raw_socket(int sock, char* interface, int port);
 void connect_raw_socket(int sock, char* interface, unsigned char address[6]);
 void send_package(int sock, char* interface, unsigned char dest_mac[6], const unsigned char* message);
 void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender_addr, socklen_t* addr_len);
+
+kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned char sequence[SEQUENCE_SIZE], unsigned char type[TYPE_SIZE], unsigned char* data);
+void destroy_header(kermit_protocol_header* header);
+void destroy_raw_socket(int sock);
+
+const unsigned char* generate_message(kermit_protocol_header* header);
 
 #endif
