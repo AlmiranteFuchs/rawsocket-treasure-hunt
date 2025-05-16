@@ -56,7 +56,7 @@ void connect_raw_socket(int sock, char* interface, unsigned char dest_mac[6]) {
     }
 }
 
-void send_package(int sock, char* interface, unsigned char dest_mac[6], const unsigned char* message){
+void send_package(int sock, char* interface, unsigned char dest_mac[6], const unsigned char* message, size_t message_len){
     struct sockaddr_ll dest_addr = {0};
     dest_addr.sll_family = AF_PACKET;
     dest_addr.sll_protocol = htons(ETH_P_ALL);
@@ -64,7 +64,7 @@ void send_package(int sock, char* interface, unsigned char dest_mac[6], const un
     dest_addr.sll_halen = ETH_ALEN;
     memcpy(dest_addr.sll_addr, dest_mac, ETH_ALEN);
 
-    ssize_t sent = sendto(sock, message, strlen((const char*) message), 0,
+    ssize_t sent = sendto(sock, message, message_len, 0,
                         (struct sockaddr*)&dest_addr, sizeof(dest_addr));
     if (sent == -1) {
         perror("sendto failed");
@@ -92,18 +92,36 @@ kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned ch
     sprintf((char*) header->start, "%d", START);
     memcpy(header->sequence, sequence, SEQUENCE_SIZE);
     memcpy(header->type, type, TYPE_SIZE);
-    header->data = (unsigned char*) malloc((atoi((const char*) header->size)) * 8);
 
-    if (header->data == NULL){
-        free(header);
-        return NULL;
-    }
-    memcpy(header->data, data, (atoi((const char*) header->size)) * 8);
-
+    if (data != NULL){
+        header->data = (unsigned char*) malloc((atoi((const char*) header->size)) * 8);
+        if (header->data == NULL){
+            free(header);
+            return NULL;
+        }
+        memcpy(header->data, data, (atoi((const char *)header->size)) * 8);
+    } else 
+        header->data = NULL;
+    
     // create checksum function later
     memset(header->checksum, 0, sizeof(header->checksum));
 
     return header;
+}
+
+unsigned int getHeaderSize(kermit_protocol_header* header) {
+    if (header == NULL) return 0;
+
+    unsigned int size = 0;
+    size += sizeof(header->start);
+    size += sizeof(header->size);
+    size += sizeof(header->sequence);
+    size += sizeof(header->type);
+    size += sizeof(header->checksum);
+    if (header->data != NULL) {
+        size += atoi((const char*) header->size) * 8;
+    }
+    return size;
 }
 
 void destroy_header(kermit_protocol_header* header){
@@ -113,15 +131,30 @@ void destroy_header(kermit_protocol_header* header){
     }
 }
 
-const unsigned char* generate_message(kermit_protocol_header* header){
-    if (header == NULL)
-        return NULL;
+const unsigned char* generate_message(kermit_protocol_header* header) {
+    if (!header) return NULL;
 
+    size_t total_size = sizeof(header->start) + sizeof(header->size) + 
+                       sizeof(header->sequence) + sizeof(header->type) + 
+                       sizeof(header->checksum);
+    
+    if (header->data) {
+        total_size += atoi((const char*)header->size) * 8;
+    }
 
-    const unsigned char* message = (const unsigned char*) malloc(sizeof(kermit_protocol_header) + (atoi((const char*) header->size)) * 8);
-    if (message == NULL)
-        return NULL;
+    unsigned char* message = malloc(total_size);
+    if (!message) return NULL;
 
-    sprintf((char*) message, "%s%s%s%s%s%s", header->start, header->size, header->sequence, header->type, header->checksum, header->data);
+    unsigned char* ptr = message;
+    memcpy(ptr, header->start, sizeof(header->start)); ptr += sizeof(header->start);
+    memcpy(ptr, header->size, sizeof(header->size)); ptr += sizeof(header->size);
+    memcpy(ptr, header->sequence, sizeof(header->sequence)); ptr += sizeof(header->sequence);
+    memcpy(ptr, header->type, sizeof(header->type)); ptr += sizeof(header->type);
+    memcpy(ptr, header->checksum, sizeof(header->checksum)); ptr += sizeof(header->checksum);
+    
+    if (header->data) {
+        memcpy(ptr, header->data, atoi((const char*)header->size) * 8);
+    }
+
     return message;
 }

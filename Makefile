@@ -1,11 +1,11 @@
 CC := gcc
 CFLAGS := -Wall 
 
-CLIENT_SOURCE := client.c clientFunctions.c socket.c
-CLIENT_OBJ := client.o clientFunctions.o socket.o
+CLIENT_SOURCE := client.c clientFunctions.c socket.c game.c
+CLIENT_OBJ := client.o clientFunctions.o socket.o game.o
 
-SERVER_SOURCE := server.c serverFunctions.c socket.c
-SERVER_OBJ := server.o serverFunctions.o socket.o
+SERVER_SOURCE := server.c serverFunctions.c socket.c game.c
+SERVER_OBJ := server.o serverFunctions.o socket.o game.o
 
 TARGET_CLIENT := client
 TARGET_SERVER := server
