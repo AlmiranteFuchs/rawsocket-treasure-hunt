@@ -1,5 +1,5 @@
 CC := gcc
-CFLAGS := -Wall 
+CFLAGS := -Wall -g
 
 CLIENT_SOURCE := client.c clientFunctions.c socket.c game.c
 CLIENT_OBJ := client.o clientFunctions.o socket.o game.o

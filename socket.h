@@ -12,27 +12,27 @@
 #include <errno.h>      
 
 #define DEFAULT_PORT 8080
-#define START 01111110
+#define START "01111110"
 
 // Message types
-#define ACK 0000
-#define NAK 0001
-#define OK_ACK 0002
-#define SIZE 0004
-#define DATA 0005
-#define TEXT_ACK_NAME 0006
-#define VIDEO_ACK_NAME 0007
-#define IMAGE_ACK_NAME 0008
-#define END 0009
-#define RIGHT 0010
-#define UP 0011
-#define DOWN 0012
-#define LEFT 0013
-#define ERROR 0015
+#define ACK "0000"
+#define NAK "0001"
+#define OK_ACK "0002"
+#define SIZE "0004"
+#define DATA "0005"
+#define TEXT_ACK_NAME "0006"
+#define VIDEO_ACK_NAME "0007"
+#define IMAGE_ACK_NAME "0008"
+#define END "0009"
+#define RIGHT "0010"
+#define UP "0011"
+#define DOWN "0012"
+#define LEFT "0013"
+#define ERROR "0015"
 
 // Error types
-#define PERMISSION_DENIED 0000
-#define NO_SPACE 0001
+#define PERMISSION_DENIED "0000"
+#define NO_SPACE "0001"
 
 #define MAX_DATA_SIZE 1024
 

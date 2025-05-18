@@ -88,10 +88,12 @@ kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned ch
     if (header == NULL)
         return NULL;
 
+    memcpy(header->start, START, strlen(START));
     memcpy(header->size, size, SIZE_SIZE);
-    sprintf((char*) header->start, "%d", START);
     memcpy(header->sequence, sequence, SEQUENCE_SIZE);
     memcpy(header->type, type, TYPE_SIZE);
+    // create checksum function later
+    memset(header->checksum, 0, sizeof(header->checksum));
 
     if (data != NULL){
         header->data = (unsigned char*) malloc((atoi((const char*) header->size)) * 8);
@@ -103,8 +105,6 @@ kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned ch
     } else 
         header->data = NULL;
     
-    // create checksum function later
-    memset(header->checksum, 0, sizeof(header->checksum));
 
     return header;
 }
