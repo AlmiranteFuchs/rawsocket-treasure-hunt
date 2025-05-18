@@ -11,6 +11,7 @@
 #define WALL '#'
 #define FOUND ' '
 #define UNFOUND '.'
+#define EVENT '@'
 
 typedef struct {
     int x;

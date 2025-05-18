@@ -63,33 +63,42 @@ kermit_protocol_header* move(int sock, char* interface, unsigned char server_mac
 
     send_package(sock, interface, server_mac, generatedM, sizeMessage);
 
+    unsigned char buffer[4096];
+    struct sockaddr_ll sender_addr;
+    socklen_t addr_len = sizeof(sender_addr);
+    receive_package(sock, buffer, &sender_addr, &addr_len);
+
     return header;
 }
 
 kermit_protocol_header* move_left(char** grid, Position* pos, int sock, char* interface, unsigned char server_mac[6]){
-    unsigned char direction[TYPE_SIZE] = "0013"; // LEFT
+    unsigned char direction[TYPE_SIZE] = LEFT;
+    kermit_protocol_header* header = move(sock, interface, server_mac, direction);
     move_player(grid, pos, '2');
     print_grid(grid);
-    return move(sock, interface, server_mac, direction);
+    return header;
 }
 
 kermit_protocol_header* move_right(char** grid, Position* pos, int sock, char* interface, unsigned char server_mac[6]){
-    unsigned char direction[TYPE_SIZE] = "0010"; // RIGHT
+    unsigned char direction[TYPE_SIZE] = RIGHT;
+    kermit_protocol_header* header = move(sock, interface, server_mac, direction);
     move_player(grid, pos, '3');
     print_grid(grid);
-    return move(sock, interface, server_mac, direction);
+    return header;
 }
 
 kermit_protocol_header* move_up(char** grid, Position* pos, int sock, char* interface, unsigned char server_mac[6]){
-    unsigned char direction[TYPE_SIZE] = "0011"; // UP
+    unsigned char direction[TYPE_SIZE] = UP;
+    kermit_protocol_header* header = move(sock, interface, server_mac, direction);
     move_player(grid, pos, '0');
     print_grid(grid);
-    return move(sock, interface, server_mac, direction);
+    return header;
 }
 
 kermit_protocol_header* move_down(char** grid, Position* pos, int sock, char* interface, unsigned char server_mac[6]){
-    unsigned char direction[TYPE_SIZE] = "0012"; // DOWN
+    unsigned char direction[TYPE_SIZE] = DOWN;
+    kermit_protocol_header* header = move(sock, interface, server_mac, direction);
     move_player(grid, pos, '1');
     print_grid(grid);
-    return move(sock, interface, server_mac, direction);
+    return header;
 }

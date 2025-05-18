@@ -23,10 +23,14 @@ void listen_server(int sock){
     socklen_t addr_len = sizeof(sender_addr);
     kermit_protocol_header* header = NULL;
 
+    Position* player_pos = initialize_player();
+    char** grid = initialize_server_grid(player_pos);
+
     printf("Server waiting for packets on loopback...\n");
     while (1) {
         receive_package(sock, buffer, &sender_addr, &addr_len); 
         header = read_bytes_into_header(buffer);
+        process_message(header, grid, player_pos);
         print_header(header);
     }
 }
@@ -72,7 +76,7 @@ kermit_protocol_header* read_bytes_into_header(unsigned char* buffer){
     memcpy(header->type, buffer + offset, TYPE_SIZE); offset += TYPE_SIZE;
     memcpy(header->checksum, buffer + offset, CHECKSUM_SIZE); offset += CHECKSUM_SIZE;
 
-    unsigned int data_size = convert_binary_to_decimal(header->size, SIZE_SIZE);
+    unsigned int data_size = convert_binary_to_decimal(header->size, SIZE_SIZE);    // does it need to be multiplied by 8?
     if (data_size > 0) {
         header->data = malloc(data_size);
         if (header->data == NULL) {
@@ -86,4 +90,46 @@ kermit_protocol_header* read_bytes_into_header(unsigned char* buffer){
     }
 
     return header;
+}
+
+char** initialize_server_grid(Position* player_pos){
+    char** grid = initialize_grid(player_pos);
+
+    // set the 8 treasures locations
+    Position* treasures[8];
+    for (int i = 0; i < 8; i++){
+        treasures[i] = (Position*) malloc(sizeof(Position));
+        treasures[i]->x = rand() % (GRID_SIZE - 2) + 1;
+        treasures[i]->y = rand() % (GRID_SIZE - 2) + 1;
+        grid[treasures[i]->x][treasures[i]->y] = EVENT;
+    }
+    
+    return grid;
+}
+
+void process_message(kermit_protocol_header* header, char** grid, Position* player_pos){
+    unsigned int type = convert_binary_to_decimal(header->type, TYPE_SIZE);
+
+    switch (type) {
+        case 11:
+            printf("Move Up\n");
+            move_player(grid, player_pos, '0');
+            break;
+        case 12: 
+            printf("Move Down\n");
+            move_player(grid, player_pos, '1');
+            break;
+        case 13: 
+            printf("Move Left\n");
+            move_player(grid, player_pos, '2');
+            break;
+        case 10:
+            printf("Move Right\n");
+            move_player(grid, player_pos, '3');
+            break;
+        default:
+            printf("Unknown message type: %u\n", type);
+            break;
+    }
+
 }

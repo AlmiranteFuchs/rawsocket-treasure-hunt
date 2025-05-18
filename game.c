@@ -78,9 +78,14 @@ void move_player(char** grid, Position* player_pos, char direction) {
     }
 
     if (grid[new_x][new_y] != WALL) {
-        grid[player_pos->x][player_pos->y] = FOUND; 
-        grid[new_x][new_y] = PLAYER;
-        player_pos->x = new_x;
-        player_pos->y = new_y;
+        if (grid[new_x][new_y] == EVENT) {
+            printf("Found a treasure!\n");
+        } else {
+            grid[player_pos->x][player_pos->y] = FOUND; 
+            grid[new_x][new_y] = PLAYER;
+            player_pos->x = new_x;
+            player_pos->y = new_y;
+        }
+
     }
 }
