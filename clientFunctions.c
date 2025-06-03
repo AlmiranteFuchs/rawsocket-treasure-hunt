@@ -102,3 +102,71 @@ kermit_protocol_header* move_down(char** grid, Position* pos, int sock, char* in
     print_grid(grid);
     return header;
 }
+
+/*
+    0 - Text
+    1 - Video
+    2 - Image
+*/
+void create_file(kermit_protocol_header* header, unsigned int type){
+    // create new file with its title and extension
+    char* extension, *output_str;
+    unsigned int extension_size;
+    switch (type){
+        case 0:
+            extension = ".txt";
+            extension_size = 3;
+            break;
+        case 1:
+            extension = ".mp4";
+            extension_size = 3;
+            break;
+        case 2:
+            extension = ".jpeg";
+            extension_size = 4;
+            break;
+    } 
+    output_str = malloc(atoi(header->size) + extension_size);
+    sprintf(output_str, "%s%s", header->data, extension);
+
+    FILE* file = fopen(output_str, "w+");
+    if (!file){
+        return;
+    }
+
+    free(output_str);
+    fclose(file);
+
+}
+
+void process_message(kermit_protocol_header* header){
+    unsigned int type = convert_binary_to_decimal(header->type, TYPE_SIZE);
+
+    switch (type) {
+        // tamanho
+        case 4:
+            break;
+        // dados
+        case 5:
+            break;
+        // texto + ack + nome
+        case 6:
+            break;
+        // video + ack + nome
+        case 7:
+            break;
+        // imagem + ack + nome
+        case 8:
+            break;
+        // fim de arquivo
+        case 9:
+            break;
+        // erro
+        case 15:
+            break;
+        default:
+            printf("Unknown message type: %u\n", type);
+            break;
+    }
+
+}

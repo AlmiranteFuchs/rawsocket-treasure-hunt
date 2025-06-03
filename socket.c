@@ -18,6 +18,14 @@ void destroy_raw_socket(int sock){
 }
 */
 
+unsigned int convert_binary_to_decimal(const unsigned char* binary, size_t size) {
+    unsigned int decimal = 0;
+    for (size_t i = 0; i < size; ++i) {
+        decimal = (decimal << 1) | (binary[i] - '0');
+    }
+    return decimal;
+}
+
 int bind_raw_socket(int sock, char* interface, int port){
     int ifindex = if_nametoindex(interface);
 

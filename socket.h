@@ -65,5 +65,6 @@ unsigned int getHeaderSize(kermit_protocol_header* header);
 void destroy_header(kermit_protocol_header* header);
 
 const unsigned char* generate_message(kermit_protocol_header* header);
+unsigned int convert_binary_to_decimal(const unsigned char* binary, size_t size);
 
 #endif

@@ -23,14 +23,16 @@ void listen_server(int sock){
     socklen_t addr_len = sizeof(sender_addr);
     kermit_protocol_header* header = NULL;
 
+    Treasure** treasures = malloc(sizeof(Treasure*) * 8);
+
     Position* player_pos = initialize_player();
-    char** grid = initialize_server_grid(player_pos);
+    char** grid = initialize_server_grid(player_pos, treasures);
 
     printf("Server waiting for packets on loopback...\n");
     while (1) {
         receive_package(sock, buffer, &sender_addr, &addr_len); 
         header = read_bytes_into_header(buffer);
-        process_message(header, grid, player_pos);
+        process_message(header, grid, player_pos, treasures);
         print_header(header);
     }
 }
@@ -40,14 +42,6 @@ void server(char* interface, int port){
 
     bind_raw_socket(sock, interface, port);
     listen_server(sock);
-}
-
-unsigned int convert_binary_to_decimal(const unsigned char* binary, size_t size) {
-    unsigned int decimal = 0;
-    for (size_t i = 0; i < size; ++i) {
-        decimal = (decimal << 1) | (binary[i] - '0');
-    }
-    return decimal;
 }
 
 /*
@@ -92,44 +86,72 @@ kermit_protocol_header* read_bytes_into_header(unsigned char* buffer){
     return header;
 }
 
-char** initialize_server_grid(Position* player_pos){
+char** initialize_server_grid(Position* player_pos, Treasure** treasures){
+    DIR *dir;
+    struct dirent *entry;
     char** grid = initialize_grid(player_pos);
 
+    dir = opendir("./objetos");
+    if (!dir)
+        fprintf(stderr, "Failed to open files directory\n");
+
     // set the 8 treasures locations
-    Position* treasures[8];
     for (int i = 0; i < 8; i++){
-        treasures[i] = (Position*) malloc(sizeof(Position));
-        treasures[i]->x = rand() % (GRID_SIZE - 2) + 1;
-        treasures[i]->y = rand() % (GRID_SIZE - 2) + 1;
-        grid[treasures[i]->x][treasures[i]->y] = EVENT;
+        treasures[i] = (Treasure*) malloc(sizeof(Treasure));
+        treasures[i]->pos = (Position*) malloc(sizeof(Position));
+        treasures[i]->pos->x = rand() % (GRID_SIZE - 2) + 1;
+        treasures[i]->pos->y = rand() % (GRID_SIZE - 2) + 1;
+        grid[treasures[i]->pos->x][treasures[i]->pos->y] = EVENT;
+
+        entry = readdir(dir);
+        if (!entry){
+            fprintf(stderr, "Not enough files in the directory\n");
+            return NULL;
+        }
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
+            entry = readdir(dir);
+
+        treasures[i]->file_name = (char*) malloc(sizeof(entry));
+        strcpy(treasures[i]->file_name, entry->d_name);
     }
     
     return grid;
 }
 
-void process_message(kermit_protocol_header* header, char** grid, Position* player_pos){
+unsigned int isPlayerOnTreasure(char** grid, Position* player_pos){
+    return (grid[player_pos->x][player_pos->y] == EVENT);
+}
+
+void process_message(kermit_protocol_header* header, char** grid, Position* player_pos, Treasure** treasures){
     unsigned int type = convert_binary_to_decimal(header->type, TYPE_SIZE);
+    unsigned char move_type;
 
     switch (type) {
         case 11:
             printf("Move Up\n");
-            move_player(grid, player_pos, '0');
+            move_type = '0';
             break;
         case 12: 
             printf("Move Down\n");
-            move_player(grid, player_pos, '1');
+            move_type = '1';
             break;
         case 13: 
             printf("Move Left\n");
-            move_player(grid, player_pos, '2');
+            move_type = '2';
             break;
         case 10:
             printf("Move Right\n");
-            move_player(grid, player_pos, '3');
+            move_type = '3';
             break;
         default:
             printf("Unknown message type: %u\n", type);
             break;
     }
 
+    move_player(grid, player_pos, move_type);
+
+    unsigned int idx = 0;
+    if (isPlayerOnTreasure(grid, player_pos)){
+        // do something
+    }
 }
