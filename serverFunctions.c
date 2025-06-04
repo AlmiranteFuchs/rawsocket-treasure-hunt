@@ -1,7 +1,7 @@
 #include "server.h"
 
 extern kermit_protocol_header* global_header_buffer;
-extern kermit_protocol_header* global_receive_buffer;
+extern kermit_protocol_header** global_receive_buffer;
 
 void print_header(kermit_protocol_header* header){
     printf("Start: %.*s\n", START_SIZE, header->start);
@@ -21,16 +21,24 @@ void print_header(kermit_protocol_header* header){
     }
 }
 
-unsigned int is_repeated_message(kermit_protocol_header* header){
-    unsigned int seq = convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE);
-    unsigned int type = convert_binary_to_decimal(header->type, TYPE_SIZE);
-    unsigned int global_seq = convert_binary_to_decimal(global_receive_buffer->sequence, SEQUENCE_SIZE);
-    unsigned int global_type = convert_binary_to_decimal(global_receive_buffer->type, TYPE_SIZE);
-
-
-    if (type != global_type) return 0;
-    else return (seq == global_seq);
-}
+// unsigned int checkIfRepeated(kermit_protocol_header* header){
+//     unsigned int seq = convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE);
+//     if (global_receive_buffer != NULL) {
+        
+//         unsigned int global_seq = convert_binary_to_decimal(global_receive_buffer->sequence, SEQUENCE_SIZE);
+//         unsigned int global_type = convert_binary_to_decimal(global_receive_buffer->type, TYPE_SIZE);
+//         unsigned int header_type = convert_binary_to_decimal(header->type, TYPE_SIZE);
+        
+//         if (global_type == header_type && global_seq == seq) {
+//             // repeated packet
+//             return 1;
+//         }
+//         printf("header type: %.*s\n, header sequence: %.*s\n", TYPE_SIZE, header->type, SEQUENCE_SIZE, header->sequence);
+//         printf("global type: %.*s\n, global sequence: %.*s\n", TYPE_SIZE, global_receive_buffer->type, SEQUENCE_SIZE, global_receive_buffer->sequence);
+//     }
+    
+//     return 0;
+// }
 
 void listen_server(int sock){
     unsigned char buffer[4096];
@@ -43,6 +51,8 @@ void listen_server(int sock){
     Position* player_pos = initialize_player();
     char** grid = initialize_server_grid(player_pos, treasures);
 
+    initialize_receive_buffer();
+
     printf("Server waiting for packets on loopback...\n");
     while (1) {
         receive_package(sock, buffer, &sender_addr, &addr_len); 
@@ -50,16 +60,19 @@ void listen_server(int sock){
         if (header == NULL)
             continue;
 
-        if (is_repeated_message(header)) {
-            printf("Repeated message received, ignoring...\n");
-            destroy_header(header);
-            continue;
+        print_receive_buffer(); 
+        
+        kermit_protocol_header* temp = get_first_in_line_receive_buffer();
+        if (temp != NULL){
+            process_message(temp, grid, player_pos, treasures);
+            destroy_header(temp);
         }
-
-        process_message(header, grid, player_pos, treasures);
-        // print_header(header);
-
-        destroy_header(header);
+        // if (checkIfRepeated(header)){
+            //     destroy_header(header);
+            //     continue;
+            // }
+        update_receive_buffer(header);
+        print_receive_buffer();
     }
 }
 

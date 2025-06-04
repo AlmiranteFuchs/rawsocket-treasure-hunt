@@ -67,6 +67,12 @@ void destroy_header(kermit_protocol_header* header);
 
 const unsigned char* generate_message(kermit_protocol_header* header);
 unsigned int convert_binary_to_decimal(const unsigned char* binary, size_t size);
+
 unsigned int checkIfNumberIsBigger(unsigned int a, unsigned int b);
+unsigned int initialize_receive_buffer();
+unsigned int is_header_on_receive_buffer(kermit_protocol_header* header);
+unsigned int update_receive_buffer(kermit_protocol_header* header);
+kermit_protocol_header* get_first_in_line_receive_buffer();
+void print_receive_buffer();
 
 #endif
