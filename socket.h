@@ -60,11 +60,13 @@ void connect_raw_socket(int sock, char* interface, unsigned char address[6]);
 void send_package(int sock, char* interface, unsigned char dest_mac[6], const unsigned char* message, size_t message_len);
 void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender_addr, socklen_t* addr_len);
 
-kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned char sequence[SEQUENCE_SIZE], unsigned char type[TYPE_SIZE], unsigned char* data);
+kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned char type[TYPE_SIZE], unsigned char* data);
 unsigned int getHeaderSize(kermit_protocol_header* header);
+kermit_protocol_header* read_bytes_into_header(unsigned char* buffer);
 void destroy_header(kermit_protocol_header* header);
 
 const unsigned char* generate_message(kermit_protocol_header* header);
 unsigned int convert_binary_to_decimal(const unsigned char* binary, size_t size);
+unsigned int checkIfNumberIsBigger(unsigned int a, unsigned int b);
 
 #endif

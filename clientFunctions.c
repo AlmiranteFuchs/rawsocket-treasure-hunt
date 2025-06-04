@@ -20,12 +20,11 @@ void client(char* interface, unsigned char server_mac[6], int port){
     char** grid = initialize_grid(player_pos);
     print_grid(grid);
 
-    char input = getch();
-    while (input != 'q'){
+    char input;
+    while ((input = getch()) != 'q'){
         // listen to server
         // ...
 
-        input = getch();
         switch (input) {
             case 'w':
                 move_up(grid, player_pos, sock, interface, server_mac);
@@ -47,12 +46,14 @@ void client(char* interface, unsigned char server_mac[6], int port){
 
 kermit_protocol_header* move(int sock, char* interface, unsigned char server_mac[6], unsigned char* direction){
     unsigned char size[SIZE_SIZE] = "0000000";
-    unsigned char sequence[SEQUENCE_SIZE] = "00000";
+    // unsigned char sequence[SEQUENCE_SIZE] = "00000";
     unsigned char type[TYPE_SIZE];
     memcpy(type, direction, TYPE_SIZE);
     unsigned char* data = NULL;
 
-    kermit_protocol_header* header = create_header(size, sequence, type, data);
+    printf("Sending move command\n");
+
+    kermit_protocol_header* header = create_header(size, type, data);
     if (header == NULL) {
         fprintf(stderr, "Failed to create header\n");
         return NULL;

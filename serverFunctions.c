@@ -1,4 +1,8 @@
 #include "server.h"
+
+extern kermit_protocol_header* global_header_buffer;
+extern kermit_protocol_header* global_receive_buffer;
+
 void print_header(kermit_protocol_header* header){
     printf("Start: %.*s\n", START_SIZE, header->start);
     printf("Size: %.*s\n", SIZE_SIZE, header->size);
@@ -17,6 +21,17 @@ void print_header(kermit_protocol_header* header){
     }
 }
 
+unsigned int is_repeated_message(kermit_protocol_header* header){
+    unsigned int seq = convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE);
+    unsigned int type = convert_binary_to_decimal(header->type, TYPE_SIZE);
+    unsigned int global_seq = convert_binary_to_decimal(global_receive_buffer->sequence, SEQUENCE_SIZE);
+    unsigned int global_type = convert_binary_to_decimal(global_receive_buffer->type, TYPE_SIZE);
+
+
+    if (type != global_type) return 0;
+    else return (seq == global_seq);
+}
+
 void listen_server(int sock){
     unsigned char buffer[4096];
     struct sockaddr_ll sender_addr;
@@ -32,8 +47,19 @@ void listen_server(int sock){
     while (1) {
         receive_package(sock, buffer, &sender_addr, &addr_len); 
         header = read_bytes_into_header(buffer);
+        if (header == NULL)
+            continue;
+
+        if (is_repeated_message(header)) {
+            printf("Repeated message received, ignoring...\n");
+            destroy_header(header);
+            continue;
+        }
+
         process_message(header, grid, player_pos, treasures);
-        print_header(header);
+        // print_header(header);
+
+        destroy_header(header);
     }
 }
 
@@ -42,48 +68,6 @@ void server(char* interface, int port){
 
     bind_raw_socket(sock, interface, port);
     listen_server(sock);
-}
-
-/*
-    * Function to read bytes from a buffer into a kermit_protocol_header structure.
-    * The function allocates memory for the header and its data field, and fills
-    * in the fields based on the provided buffer.
-*/
-kermit_protocol_header* read_bytes_into_header(unsigned char* buffer){
-    kermit_protocol_header* header = malloc(sizeof(kermit_protocol_header));
-    if (header == NULL) {
-        fprintf(stderr, "Failed to allocate memory for header\n");
-        return NULL;
-    }
-
-    unsigned int offset = START_SIZE;
-    memcpy(header->start, buffer, START_SIZE); 
-
-    if (strcmp((char*) header->start, START) != 0) {
-        fprintf(stderr, "Invalid start sequence\n");
-        free(header);
-        return NULL;
-    }
-
-    memcpy(header->size, buffer + offset, SIZE_SIZE); offset += SIZE_SIZE;
-    memcpy(header->sequence, buffer + offset, SEQUENCE_SIZE); offset += SEQUENCE_SIZE;
-    memcpy(header->type, buffer + offset, TYPE_SIZE); offset += TYPE_SIZE;
-    memcpy(header->checksum, buffer + offset, CHECKSUM_SIZE); offset += CHECKSUM_SIZE;
-
-    unsigned int data_size = convert_binary_to_decimal(header->size, SIZE_SIZE);    // does it need to be multiplied by 8?
-    if (data_size > 0) {
-        header->data = malloc(data_size);
-        if (header->data == NULL) {
-            fprintf(stderr, "Failed to allocate memory for data\n");
-            free(header);
-            return NULL;
-        }
-        memcpy(header->data, buffer + offset, data_size);
-    } else {
-        header->data = NULL;
-    }
-
-    return header;
 }
 
 char** initialize_server_grid(Position* player_pos, Treasure** treasures){
@@ -151,7 +135,17 @@ void process_message(kermit_protocol_header* header, char** grid, Position* play
     move_player(grid, player_pos, move_type);
 
     unsigned int idx = 0;
-    if (isPlayerOnTreasure(grid, player_pos)){
-        // do something
+    char* file_name;
+
+    if (!isPlayerOnTreasure(grid, player_pos))
+        return;
+
+    for (unsigned int i = 0; i < 8; i++){
+        if (treasures[i]->pos->x == player_pos->x && treasures[i]->pos->y == player_pos->y){
+            file_name = treasures[i]->file_name;
+            break;
+        }
     }
+
+    printf("filename: %s\n", file_name);
 }

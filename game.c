@@ -88,4 +88,6 @@ void move_player(char** grid, Position* player_pos, char direction) {
         }
 
     }
+
+    printf("player_pos: %d %d\n", new_x, new_y);
 }
