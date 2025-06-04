@@ -295,9 +295,12 @@ unsigned int is_header_on_receive_buffer(kermit_protocol_header* header) {
     unsigned int seq = convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE);
     unsigned int type = convert_binary_to_decimal(header->type, TYPE_SIZE);
 
+
     for (unsigned int i = 0; global_receive_buffer[i] != NULL; i++) {
         unsigned int temp_seq = convert_binary_to_decimal(global_receive_buffer[i]->sequence, SEQUENCE_SIZE);
         unsigned int temp_type = convert_binary_to_decimal(global_receive_buffer[i]->type, TYPE_SIZE);
+
+        printf("Comparing seq: %u with temp_seq: %u and type: %u with temp_type: %u\n", seq, temp_seq, type, temp_type);
 
         if (temp_seq == seq && temp_type == type) {
             return 1; // Header found in the buffer

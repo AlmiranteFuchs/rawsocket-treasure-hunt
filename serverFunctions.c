@@ -21,24 +21,6 @@ void print_header(kermit_protocol_header* header){
     }
 }
 
-// unsigned int checkIfRepeated(kermit_protocol_header* header){
-//     unsigned int seq = convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE);
-//     if (global_receive_buffer != NULL) {
-        
-//         unsigned int global_seq = convert_binary_to_decimal(global_receive_buffer->sequence, SEQUENCE_SIZE);
-//         unsigned int global_type = convert_binary_to_decimal(global_receive_buffer->type, TYPE_SIZE);
-//         unsigned int header_type = convert_binary_to_decimal(header->type, TYPE_SIZE);
-        
-//         if (global_type == header_type && global_seq == seq) {
-//             // repeated packet
-//             return 1;
-//         }
-//         printf("header type: %.*s\n, header sequence: %.*s\n", TYPE_SIZE, header->type, SEQUENCE_SIZE, header->sequence);
-//         printf("global type: %.*s\n, global sequence: %.*s\n", TYPE_SIZE, global_receive_buffer->type, SEQUENCE_SIZE, global_receive_buffer->sequence);
-//     }
-    
-//     return 0;
-// }
 
 void listen_server(int sock){
     unsigned char buffer[4096];
@@ -60,19 +42,18 @@ void listen_server(int sock){
         if (header == NULL)
             continue;
 
-        print_receive_buffer(); 
+        if (is_header_on_receive_buffer(header)) {
+            destroy_header(header);
+            continue;
+        }
         
         kermit_protocol_header* temp = get_first_in_line_receive_buffer();
         if (temp != NULL){
             process_message(temp, grid, player_pos, treasures);
             destroy_header(temp);
         }
-        // if (checkIfRepeated(header)){
-            //     destroy_header(header);
-            //     continue;
-            // }
+
         update_receive_buffer(header);
-        print_receive_buffer();
     }
 }
 
