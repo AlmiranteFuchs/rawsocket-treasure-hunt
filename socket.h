@@ -34,7 +34,7 @@
 #define PERMISSION_DENIED "0000"
 #define NO_SPACE "0001"
 
-#define MAX_DATA_SIZE 1024
+#define MAX_DATA_SIZE 127
 
 #define START_SIZE 8
 #define SIZE_SIZE 7
@@ -61,19 +61,18 @@ void send_package(int sock, char* interface, unsigned char dest_mac[6], const un
 void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender_addr, socklen_t* addr_len);
 
 kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned char type[TYPE_SIZE], unsigned char* data);
-unsigned int getHeaderSize(kermit_protocol_header* header);
 kermit_protocol_header* read_bytes_into_header(unsigned char* buffer);
+unsigned int getHeaderSize(kermit_protocol_header* header);
 void destroy_header(kermit_protocol_header* header);
-void copy_header_deep(kermit_protocol_header* dest, const kermit_protocol_header* src);
-
+void copy_header_deep(kermit_protocol_header** dest, const kermit_protocol_header* src);
 const unsigned char* generate_message(kermit_protocol_header* header);
-unsigned int convert_binary_to_decimal(const unsigned char* binary, size_t size);
+unsigned int check_if_same(kermit_protocol_header* header1, kermit_protocol_header* header2);
+void print_header(kermit_protocol_header* header);
 
+unsigned int convert_binary_to_decimal(const unsigned char* binary, size_t size);
+unsigned char* convert_decimal_to_binary(unsigned int decimal, size_t size);
 unsigned int checkIfNumberIsBigger(unsigned int a, unsigned int b);
-unsigned int initialize_receive_buffer();
-unsigned int is_header_on_receive_buffer(kermit_protocol_header* header);
-unsigned int update_receive_buffer(kermit_protocol_header* header);
-kermit_protocol_header* get_first_in_line_receive_buffer();
-void print_receive_buffer();
+
+
 
 #endif

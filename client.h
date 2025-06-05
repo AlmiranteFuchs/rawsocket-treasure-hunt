@@ -2,6 +2,8 @@
 #define CLIENT_H
 #include "socket.h"
 #include "game.h"
+#include "receiveBuffer.h"
+#include <termios.h>
 
 void client(char* interface, unsigned char server_mac[6], int port);
 

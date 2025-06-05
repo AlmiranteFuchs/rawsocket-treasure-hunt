@@ -5,50 +5,11 @@ extern kermit_protocol_header** global_receive_buffer;
 extern kermit_protocol_header* last_header;
 extern unsigned int expected_sequence;
 
-void print_header(kermit_protocol_header* header){
-    printf("Start: %.*s\n", START_SIZE, header->start);
-    printf("Size: %.*s\n", SIZE_SIZE, header->size);
-    printf("Sequence: %.*s\n", SEQUENCE_SIZE, header->sequence);
-    printf("Type: %.*s\n", TYPE_SIZE, header->type);
-    printf("Checksum: %.*s\n", CHECKSUM_SIZE, header->checksum);
-    if (header->data != NULL) {
-        unsigned int data_size = convert_binary_to_decimal(header->size, SIZE_SIZE);
-        printf("Data: ");
-        for (unsigned int i = 0; i < data_size; i++) {
-            printf("%02x ", header->data[i]);
-        }
-        printf("\n");
-    } else {
-        printf("Data: NULL\n");
-    }
-}
-
-unsigned int check_if_same(kermit_protocol_header* header1, kermit_protocol_header* header2) {
-    if (header1 == NULL || header2 == NULL) return 0;
-
-    unsigned int seq1 = convert_binary_to_decimal(header1->sequence, SEQUENCE_SIZE);
-    unsigned int seq2 = convert_binary_to_decimal(header2->sequence, SEQUENCE_SIZE);
-    unsigned int type1 = convert_binary_to_decimal(header1->type, TYPE_SIZE);
-    unsigned int type2 = convert_binary_to_decimal(header2->type, TYPE_SIZE);
-
-    if (seq1 == seq2 && type1 == type2) {
-        return 1; // Headers are the same
-    }
-    
-    return 0;
-}
-
-void listen_server(int sock){
+void listen_server(int sock, Treasure** treasures, Position* player_pos, char** grid){
     unsigned char buffer[4096];
     struct sockaddr_ll sender_addr;
     socklen_t addr_len = sizeof(sender_addr);
     kermit_protocol_header* header = NULL;
-
-    Treasure** treasures = malloc(sizeof(Treasure*) * 8);
-    Position* player_pos = initialize_player();
-    char** grid = initialize_server_grid(player_pos, treasures);
-
-    initialize_receive_buffer();
 
     printf("Server waiting for packets on loopback...\n");
     while (1) {
@@ -58,9 +19,6 @@ void listen_server(int sock){
             continue;
             
         if (last_header){
-            print_header(header);
-            print_header(last_header);
-
             if (check_if_same(header, last_header)) {
                 printf("Received duplicate header, ignoring...\n");
                 destroy_header(header);
@@ -73,13 +31,14 @@ void listen_server(int sock){
             continue;
         }
 
-        // Update the buffer BEFORE processing
         update_receive_buffer(header);
+        copy_header_deep(&last_header, header);
 
-        copy_header_deep(last_header, header);
         kermit_protocol_header* temp = get_first_in_line_receive_buffer();
         if (temp != NULL){
-            process_message(temp, grid, player_pos, treasures);
+            unsigned char sender_mac[6];
+            memcpy(sender_mac, sender_addr.sll_addr, sizeof(sender_mac));
+            process_message(temp, grid, player_pos, treasures, sock, "veth2", sender_mac);
             destroy_header(temp);
         }
 
@@ -91,7 +50,14 @@ void server(char* interface, int port){
     int sock = create_raw_socket();
 
     bind_raw_socket(sock, interface, port);
-    listen_server(sock);
+    
+    Treasure** treasures = malloc(sizeof(Treasure*) * 8);
+    Position* player_pos = initialize_player();
+    char** grid = initialize_server_grid(player_pos, treasures);
+    last_header = NULL;
+    initialize_receive_buffer();
+
+    listen_server(sock, treasures, player_pos, grid);
 }
 
 char** initialize_server_grid(Position* player_pos, Treasure** treasures){
@@ -127,11 +93,11 @@ char** initialize_server_grid(Position* player_pos, Treasure** treasures){
 }
 
 unsigned int isPlayerOnTreasure(char** grid, Position* player_pos){
-    printf("alou\n");
+    printf("Grid[%d][%d]: %c\n", player_pos->x, player_pos->y, grid[player_pos->x][player_pos->y]);
     return (grid[player_pos->x][player_pos->y] == EVENT);
 }
 
-void process_message(kermit_protocol_header* header, char** grid, Position* player_pos, Treasure** treasures){
+void process_message(kermit_protocol_header* header, char** grid, Position* player_pos, Treasure** treasures, int sock, char* interface, unsigned char server_mac[6]){
     unsigned int type = convert_binary_to_decimal(header->type, TYPE_SIZE);
     unsigned char move_type;
 
@@ -158,8 +124,6 @@ void process_message(kermit_protocol_header* header, char** grid, Position* play
     }
 
     move_player(grid, player_pos, move_type);
-
-    unsigned int idx = 0;
     char* file_name;
 
     if (!isPlayerOnTreasure(grid, player_pos))
@@ -172,5 +136,138 @@ void process_message(kermit_protocol_header* header, char** grid, Position* play
         }
     }
 
-    printf("filename: %s\n", file_name);
+    char* file_path = malloc(strlen("./objetos/") + strlen(file_name) + 1);
+    if (file_path == NULL) {
+        fprintf(stderr, "Failed to allocate memory for file path\n");
+        return;
+    }
+    sprintf(file_path, "./objetos/%s", file_name);
+    send_file(file_path, sock, interface, server_mac);
+}
+
+void send_filename(char* filename, unsigned char* type, int sock, char* interface, unsigned char server_mac[6]){
+    // copy the size of the filename into size
+    unsigned int filename_length = strlen(filename);
+    unsigned char* size_bin = convert_decimal_to_binary(filename_length, SIZE_SIZE);
+
+    kermit_protocol_header* header = create_header(size_bin, type, (unsigned char*) filename);
+    if (header == NULL) {
+        fprintf(stderr, "Failed to create header\n");
+        free(size_bin);
+        return;
+    }
+
+    const unsigned char* message = generate_message(header);
+    unsigned int message_size = getHeaderSize(header);
+    send_package(sock, interface, server_mac, message, message_size);
+}
+
+void send_file_size(FILE* file, int sock, char* interface, unsigned char server_mac[6]){
+    if (file == NULL) {
+        fprintf(stderr, "File pointer is NULL\n");
+        return;
+    }
+
+    fseek(file, 0, SEEK_END);
+    unsigned long file_size = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    unsigned char size_bin[SIZE_SIZE];
+    memcpy(size_bin, convert_decimal_to_binary(file_size, SIZE_SIZE), SIZE_SIZE);
+
+    kermit_protocol_header* header = create_header(size_bin, (unsigned char*) SIZE, NULL);
+    if (header == NULL) {
+        fprintf(stderr, "Failed to create header for file size\n");
+        return;
+    }
+
+    const unsigned char* message = generate_message(header);
+    unsigned int message_size = getHeaderSize(header);
+    send_package(sock, interface, server_mac, message, message_size);
+
+    destroy_header(header);
+}
+
+void send_end_of_file(int sock, char* interface, unsigned char server_mac[6]){
+    unsigned char end_type[TYPE_SIZE] = END;
+    unsigned char size[SIZE_SIZE] = "0000000"; // Size is 0 for end of file
+    kermit_protocol_header* header = create_header(size, end_type, NULL);
+    if (header == NULL) {
+        fprintf(stderr, "Failed to create end of file header\n");
+        return;
+    }
+
+    const unsigned char* message = generate_message(header);
+    unsigned int message_size = getHeaderSize(header);
+    send_package(sock, interface, server_mac, message, message_size);
+
+    destroy_header(header);
+}
+
+void send_file_packages(char* filename, unsigned char* type, int sock, char* interface, unsigned char server_mac[6]){
+    if (filename == NULL || type == NULL) {
+        fprintf(stderr, "Filename or type is NULL\n");
+        return;
+    }
+
+    FILE* file = fopen(filename, "rb");
+    if (file == NULL) {
+        fprintf(stderr, "Failed to open file: %s\n", filename);
+        return;
+    }
+
+    char* f_name = strrchr(filename, '/');
+    if (f_name) f_name++;
+    send_filename(f_name, type, sock, interface, server_mac);
+    send_file_size(file, sock, interface, server_mac);
+
+    unsigned char data[MAX_DATA_SIZE];
+    size_t bytes_read;
+
+    for (int sequence = 0; (bytes_read = fread(data, 1, MAX_DATA_SIZE, file)) > 0; sequence++) {
+        unsigned char size_bin[SIZE_SIZE];
+
+        unsigned int size_decimal = (unsigned int) bytes_read;
+        memcpy(size_bin, convert_decimal_to_binary(size_decimal, SIZE_SIZE), SIZE_SIZE);
+
+        kermit_protocol_header* header = create_header(size_bin, (unsigned char*) DATA, data);
+        if (header == NULL) {
+            fprintf(stderr, "Failed to create header for data\n");
+            fclose(file);
+            return;
+        }
+
+        const unsigned char* message = generate_message(header);
+        unsigned int message_size = getHeaderSize(header);
+        send_package(sock, interface, server_mac, message, message_size);
+
+        destroy_header(header);
+    }
+
+    send_end_of_file(sock, interface, server_mac);
+
+    free(filename);
+    fclose(file);
+}
+
+void send_file(char* filename, int sock, char* interface, unsigned char server_mac[6]){
+    char* extension = strrchr(filename, '.');
+    if (extension) {
+        extension++;
+    }
+
+    switch (extension[0]){
+        case 't':   // text file
+            send_file_packages(filename, (unsigned char*) TEXT_ACK_NAME, sock, interface, server_mac);
+            break;
+        case 'm':   // video file
+            send_file_packages(filename, (unsigned char*) VIDEO_ACK_NAME, sock, interface, server_mac);
+            break;
+        case 'j':   // image file
+            send_file_packages(filename, (unsigned char*) IMAGE_ACK_NAME, sock, interface, server_mac);
+            break;
+        default:
+            fprintf(stderr, "Unknown file type: %s\n", filename);
+            break;
+    }
 }

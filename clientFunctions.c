@@ -1,16 +1,107 @@
 #include "client.h"
 
-int getch() {
+extern kermit_protocol_header* last_header;
+extern kermit_protocol_header** global_receive_buffer;
+
+FILE* curr = NULL;
+unsigned int curr_tam = 0;
+unsigned int expected_sequence_local = 0;
+
+// int getch() {
+//     struct termios oldt, newt;
+//     int ch;
+//     tcgetattr(STDIN_FILENO, &oldt);
+//     newt = oldt;
+//     newt.c_lflag &= ~(ICANON | ECHO);
+//     tcsetattr(STDIN_FILENO, TCSANOW, &newt);
+//     ch = getchar();
+//     tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+//     return ch;
+// }
+
+int getch_timeout(int usec_timeout) {
     struct termios oldt, newt;
-    int ch;
+    int ch = -1;
+    struct timeval tv;
+    fd_set readfds;
+
     tcgetattr(STDIN_FILENO, &oldt);
     newt = oldt;
     newt.c_lflag &= ~(ICANON | ECHO);
     tcsetattr(STDIN_FILENO, TCSANOW, &newt);
-    ch = getchar();
+
+    FD_ZERO(&readfds);
+    FD_SET(STDIN_FILENO, &readfds);
+
+    tv.tv_sec = 0;
+    tv.tv_usec = usec_timeout;
+
+    int retval = select(STDIN_FILENO + 1, &readfds, NULL, NULL, &tv);
+    if (retval > 0 && FD_ISSET(STDIN_FILENO, &readfds)) {
+        ch = getchar();
+    }
+
     tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
     return ch;
 }
+
+void listen_to_server(int sock, char* interface, unsigned char server_mac[6], char** grid, Position* player_pos) {
+    unsigned char buffer[4096];
+    struct sockaddr_ll sender_addr;
+    socklen_t addr_len = sizeof(sender_addr);
+    kermit_protocol_header* header = NULL;
+
+    while (1) {
+        fd_set readfds;
+        struct timeval tv;
+        FD_ZERO(&readfds);
+        FD_SET(sock, &readfds);
+        tv.tv_sec = 0;
+        tv.tv_usec = 100000; // 100ms
+
+        int retval = select(sock + 1, &readfds, NULL, NULL, &tv);
+        if (retval == -1) {
+            perror("select()");
+            break;
+        } else if (retval == 0) {
+            // timeout, nada mais para ler
+            break;
+        }
+
+        receive_package(sock, buffer, &sender_addr, &addr_len); 
+        header = read_bytes_into_header(buffer);
+        if (header == NULL) {
+            fprintf(stderr, "Failed to read header\n");
+            continue;
+        }
+
+        if (last_header && check_if_same(header, last_header)) {
+            printf("Received duplicate header, ignoring...\n");
+            destroy_header(header);
+            continue;
+        }
+
+        if (is_header_on_receive_buffer(header)) {
+            destroy_header(header);
+            continue;
+        }
+
+        kermit_protocol_header* temp;
+        while ((temp = get_first_in_line_receive_buffer()) != NULL) {
+            process_message(temp);
+            destroy_header(temp);
+        }
+
+        // kermit_protocol_header* temp = get_first_in_line_receive_buffer();
+        // if (temp != NULL) {
+        //     process_message(temp);
+        //     destroy_header(temp);
+        // }
+        update_receive_buffer(header);
+        copy_header_deep(&last_header, header);
+    }
+}
+
 
 void client(char* interface, unsigned char server_mac[6], int port){
     int sock = create_raw_socket();
@@ -18,12 +109,17 @@ void client(char* interface, unsigned char server_mac[6], int port){
 
     Position* player_pos = initialize_player();
     char** grid = initialize_grid(player_pos);
+    initialize_receive_buffer();
     print_grid(grid);
 
-    char input;
-    while ((input = getch()) != 'q'){
-        // listen to server
-        // ...
+    int input;
+    while (1){
+        input = getch_timeout(100000); // 100ms
+
+        listen_to_server(sock, interface, server_mac, grid, player_pos);
+
+        if (input == 'q') break;
+        if (input == -1) continue; // timeout, volta para o loop
 
         switch (input) {
             case 'w':
@@ -41,6 +137,7 @@ void client(char* interface, unsigned char server_mac[6], int port){
             default:
                 break;
         }
+        print_receive_buffer();
     }
 }
 
@@ -64,10 +161,10 @@ kermit_protocol_header* move(int sock, char* interface, unsigned char server_mac
 
     send_package(sock, interface, server_mac, generatedM, sizeMessage);
 
-    unsigned char buffer[4096];
-    struct sockaddr_ll sender_addr;
-    socklen_t addr_len = sizeof(sender_addr);
-    receive_package(sock, buffer, &sender_addr, &addr_len);
+    // unsigned char buffer[4096];
+    // struct sockaddr_ll sender_addr;
+    // socklen_t addr_len = sizeof(sender_addr);
+    // receive_package(sock, buffer, &sender_addr, &addr_len);
 
     return header;
 }
@@ -104,40 +201,53 @@ kermit_protocol_header* move_down(char** grid, Position* pos, int sock, char* in
     return header;
 }
 
+void read_to_file(kermit_protocol_header* header){
+    if (curr == NULL) {
+        fprintf(stderr, "No file is currently open to write data to.\n");
+        return;
+    }
+
+    unsigned int size = convert_binary_to_decimal(header->size, SIZE_SIZE);
+    fwrite(header->data, sizeof(unsigned char), size, curr);
+    fflush(curr);
+    printf("Wrote %u bytes to file.\n", size);
+
+    // kermit_protocol_header* buffer = NULL;
+    // while ((buffer = get_first_in_line_receive_buffer()) != NULL) {
+    //     unsigned int type = convert_binary_to_decimal(buffer->type, TYPE_SIZE);
+    //     if (type != 5) {
+    //         printf("Received non-data type header, expected data type.\n");
+    //         update_receive_buffer(buffer);
+    //         destroy_header(buffer);
+    //         break;
+    //     }
+
+    //     size = convert_binary_to_decimal(buffer->size, SIZE_SIZE);
+    //     fwrite(buffer->data, sizeof(unsigned char), size, curr);
+    //     fflush(curr); 
+    //     printf("Wrote %u bytes to file.\n", size);
+
+    //     destroy_header(buffer);
+        
+    //     expected_sequence_local++;
+    // }
+}
+
 /*
     0 - Text
     1 - Video
     2 - Image
 */
-void create_file(kermit_protocol_header* header, unsigned int type){
+void create_file(kermit_protocol_header* header){
     // create new file with its title and extension
-    char* extension, *output_str;
-    unsigned int extension_size;
-    switch (type){
-        case 0:
-            extension = ".txt";
-            extension_size = 3;
-            break;
-        case 1:
-            extension = ".mp4";
-            extension_size = 3;
-            break;
-        case 2:
-            extension = ".jpeg";
-            extension_size = 4;
-            break;
-    } 
-    output_str = malloc(atoi(header->size) + extension_size);
-    sprintf(output_str, "%s%s", header->data, extension);
+    printf("Creating file: %s\n", header->data);
 
-    FILE* file = fopen(output_str, "w+");
+    FILE* file = fopen((const char*) header->data, "w+");
     if (!file){
         return;
     }
 
-    free(output_str);
-    fclose(file);
-
+    curr = file;
 }
 
 void process_message(kermit_protocol_header* header){
@@ -146,12 +256,18 @@ void process_message(kermit_protocol_header* header){
     switch (type) {
         // tamanho
         case 4:
+            int size = convert_binary_to_decimal(header->size, SIZE_SIZE);
+            printf("Received size: %u\n", size);
+            curr_tam = size;
             break;
         // dados
         case 5:
+            printf("Received data of size: %u\n", convert_binary_to_decimal(header->size, SIZE_SIZE));
+            read_to_file(header);
             break;
         // texto + ack + nome
         case 6:
+            create_file(header);
             break;
         // video + ack + nome
         case 7:
@@ -161,6 +277,11 @@ void process_message(kermit_protocol_header* header){
             break;
         // fim de arquivo
         case 9:
+            printf("End of file received.\n");
+            fclose(curr);
+            curr = NULL;
+            curr_tam = 0;
+            expected_sequence_local = 0;
             break;
         // erro
         case 15:
