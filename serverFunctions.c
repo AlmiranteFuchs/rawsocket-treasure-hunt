@@ -2,6 +2,8 @@
 
 extern kermit_protocol_header* global_header_buffer;
 extern kermit_protocol_header** global_receive_buffer;
+extern kermit_protocol_header* last_header;
+extern unsigned int expected_sequence;
 
 void print_header(kermit_protocol_header* header){
     printf("Start: %.*s\n", START_SIZE, header->start);
@@ -21,6 +23,20 @@ void print_header(kermit_protocol_header* header){
     }
 }
 
+unsigned int check_if_same(kermit_protocol_header* header1, kermit_protocol_header* header2) {
+    if (header1 == NULL || header2 == NULL) return 0;
+
+    unsigned int seq1 = convert_binary_to_decimal(header1->sequence, SEQUENCE_SIZE);
+    unsigned int seq2 = convert_binary_to_decimal(header2->sequence, SEQUENCE_SIZE);
+    unsigned int type1 = convert_binary_to_decimal(header1->type, TYPE_SIZE);
+    unsigned int type2 = convert_binary_to_decimal(header2->type, TYPE_SIZE);
+
+    if (seq1 == seq2 && type1 == type2) {
+        return 1; // Headers are the same
+    }
+    
+    return 0;
+}
 
 void listen_server(int sock){
     unsigned char buffer[4096];
@@ -29,7 +45,6 @@ void listen_server(int sock){
     kermit_protocol_header* header = NULL;
 
     Treasure** treasures = malloc(sizeof(Treasure*) * 8);
-
     Position* player_pos = initialize_player();
     char** grid = initialize_server_grid(player_pos, treasures);
 
@@ -41,19 +56,34 @@ void listen_server(int sock){
         header = read_bytes_into_header(buffer);
         if (header == NULL)
             continue;
+            
+        if (last_header){
+            print_header(header);
+            print_header(last_header);
+
+            if (check_if_same(header, last_header)) {
+                printf("Received duplicate header, ignoring...\n");
+                destroy_header(header);
+                continue;
+            }
+        }
 
         if (is_header_on_receive_buffer(header)) {
             destroy_header(header);
             continue;
         }
-        
+
+        // Update the buffer BEFORE processing
+        update_receive_buffer(header);
+
+        copy_header_deep(last_header, header);
         kermit_protocol_header* temp = get_first_in_line_receive_buffer();
         if (temp != NULL){
             process_message(temp, grid, player_pos, treasures);
             destroy_header(temp);
         }
 
-        update_receive_buffer(header);
+        printf("expected sequence: %u\n", expected_sequence);
     }
 }
 
@@ -97,6 +127,7 @@ char** initialize_server_grid(Position* player_pos, Treasure** treasures){
 }
 
 unsigned int isPlayerOnTreasure(char** grid, Position* player_pos){
+    printf("alou\n");
     return (grid[player_pos->x][player_pos->y] == EVENT);
 }
 

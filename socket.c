@@ -2,6 +2,8 @@
 
 kermit_protocol_header* global_header_buffer = NULL;
 kermit_protocol_header** global_receive_buffer = NULL;
+kermit_protocol_header* last_header = NULL;
+unsigned int expected_sequence = 0;
 
 int create_raw_socket(){
     int sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
@@ -22,6 +24,10 @@ void destroy_raw_socket(int sock){
 */
 
 void copy_header_deep(kermit_protocol_header* dest, const kermit_protocol_header* src) {
+    if (dest == NULL){
+        dest = (kermit_protocol_header*) malloc(sizeof(kermit_protocol_header));
+    }
+    
     if (dest->data != NULL) {
         free(dest->data);
         dest->data = NULL;
@@ -300,8 +306,6 @@ unsigned int is_header_on_receive_buffer(kermit_protocol_header* header) {
         unsigned int temp_seq = convert_binary_to_decimal(global_receive_buffer[i]->sequence, SEQUENCE_SIZE);
         unsigned int temp_type = convert_binary_to_decimal(global_receive_buffer[i]->type, TYPE_SIZE);
 
-        printf("Comparing seq: %u with temp_seq: %u and type: %u with temp_type: %u\n", seq, temp_seq, type, temp_type);
-
         if (temp_seq == seq && temp_type == type) {
             return 1; // Header found in the buffer
         }
@@ -320,6 +324,12 @@ void insert_in_i_receive_buffer(kermit_protocol_header* header, unsigned int ind
 
     // Insert the new header at the specified index
     global_receive_buffer[index] = header;
+
+    // identify expected sequence number for data type
+    unsigned int seq = convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE);
+    if (seq == expected_sequence && strcmp((const char*)header->type, DATA) == 0) {
+        expected_sequence = (expected_sequence + 1) % (1 << SEQUENCE_SIZE);
+    }
 }
 
 unsigned int update_receive_buffer(kermit_protocol_header* header) {
