@@ -73,13 +73,20 @@ unsigned int update_receive_buffer(kermit_protocol_header* header) {
         unsigned int temp_type = convert_binary_to_decimal(global_receive_buffer[i]->type, TYPE_SIZE);
 
         // Verifica se o cabeçalho atual é maior que o cabeçalho no buffer
-        if (checkIfNumberIsBigger(seq, temp_seq) && type == temp_type) {
+
+        // if ((type == temp_type && checkIfNumberIsBigger(seq, temp_seq))) {
+        //     insert_in_i_receive_buffer(header, i);
+        //     return 1;
+        // }
+
+        if (!checkIfNumberIsBigger(seq, temp_seq)) {
             insert_in_i_receive_buffer(header, i);
             return 1;
         }
 
         i++;
     }
+
 
     if (i >= RECEIVE_BUFFER_SIZE) {
         fprintf(stderr, "Receive buffer is full, cannot insert new header\n");
@@ -98,6 +105,7 @@ kermit_protocol_header* get_first_in_line_receive_buffer() {
     }
 
     kermit_protocol_header* first_header = global_receive_buffer[0];
+    print_header(first_header);
 
     // Shift para a esquerda
     unsigned int i = 0;

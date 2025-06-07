@@ -83,7 +83,7 @@ char** initialize_server_grid(Position* player_pos, Treasure** treasures){
             return NULL;
         }
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
-            entry = readdir(dir);
+            continue;
 
         treasures[i]->file_name = (char*) malloc(sizeof(entry));
         strcpy(treasures[i]->file_name, entry->d_name);
@@ -189,8 +189,10 @@ void send_file_size(FILE* file, int sock, char* interface, unsigned char server_
 }
 
 void send_end_of_file(int sock, char* interface, unsigned char server_mac[6]){
-    unsigned char end_type[TYPE_SIZE] = END;
-    unsigned char size[SIZE_SIZE] = "0000000"; // Size is 0 for end of file
+    unsigned char end_type[TYPE_SIZE];
+    unsigned char size[SIZE_SIZE]; // Size is 0 for end of file
+    memcpy(end_type, END, TYPE_SIZE);
+    memcpy(size, "0000000", SIZE_SIZE);
     kermit_protocol_header* header = create_header(size, end_type, NULL);
     if (header == NULL) {
         fprintf(stderr, "Failed to create end of file header\n");

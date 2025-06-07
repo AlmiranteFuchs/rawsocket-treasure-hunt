@@ -144,15 +144,25 @@ kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned ch
         header->data = NULL;
     }
 
-    /*
-    * Checks if the global header buffer is set and if the types match to calculate the next sequence number
-    */
-    if (global_header_buffer && memcmp(global_header_buffer->type, type, TYPE_SIZE) == 0) {
+    // /*
+    // * Checks if the global header buffer is set and if the types match to calculate the next sequence number
+    // */
+    // if (global_header_buffer && memcmp(global_header_buffer->type, type, TYPE_SIZE) == 0) {
+    //     unsigned int seq = convert_binary_to_decimal(global_header_buffer->sequence, SEQUENCE_SIZE);
+    //     seq = (seq + 1) % (1 << SEQUENCE_SIZE);
+    //     unsigned char* seq_bin = convert_decimal_to_binary(seq, SEQUENCE_SIZE);
+    //     memcpy(header->sequence, seq_bin, SEQUENCE_SIZE);
+
+    //     free(seq_bin);
+    // } else {
+    //     memset(header->sequence, '0', SEQUENCE_SIZE);
+    // }
+
+    if (global_header_buffer) {
         unsigned int seq = convert_binary_to_decimal(global_header_buffer->sequence, SEQUENCE_SIZE);
         seq = (seq + 1) % (1 << SEQUENCE_SIZE);
         unsigned char* seq_bin = convert_decimal_to_binary(seq, SEQUENCE_SIZE);
         memcpy(header->sequence, seq_bin, SEQUENCE_SIZE);
-
         free(seq_bin);
     } else {
         memset(header->sequence, '0', SEQUENCE_SIZE);
@@ -247,13 +257,8 @@ const unsigned char* generate_message(kermit_protocol_header* header) {
  * Check if the sequence number a is greater than b considering the wrap-around (for sequence numbers)
  */
 unsigned int checkIfNumberIsBigger(unsigned int a, unsigned int b){
-    unsigned int max_seq = 2 << (SEQUENCE_SIZE - 1);
-
-    if (a > b && (a - b) < max_seq) {
-        return 1;
-    } else {
-        return 0;
-    }
+    unsigned int max_seq = 1 << SEQUENCE_SIZE;
+    return ((a - b + max_seq) % max_seq) < (max_seq / 2);
 }
 
 /*

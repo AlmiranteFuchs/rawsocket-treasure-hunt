@@ -67,38 +67,42 @@ void listen_to_server(int sock, char* interface, unsigned char server_mac[6], ch
             // timeout, nada mais para ler
             break;
         }
-
-        receive_package(sock, buffer, &sender_addr, &addr_len); 
-        header = read_bytes_into_header(buffer);
-        if (header == NULL) {
-            fprintf(stderr, "Failed to read header\n");
-            continue;
-        }
-
-        if (last_header && check_if_same(header, last_header)) {
-            printf("Received duplicate header, ignoring...\n");
-            destroy_header(header);
-            continue;
-        }
-
-        if (is_header_on_receive_buffer(header)) {
-            destroy_header(header);
-            continue;
-        }
-
-        kermit_protocol_header* temp;
-        while ((temp = get_first_in_line_receive_buffer()) != NULL) {
-            process_message(temp);
-            destroy_header(temp);
-        }
-
+        
         // kermit_protocol_header* temp = get_first_in_line_receive_buffer();
         // if (temp != NULL) {
         //     process_message(temp);
         //     destroy_header(temp);
         // }
+        
+        receive_package(sock, buffer, &sender_addr, &addr_len); 
+        header = read_bytes_into_header(buffer);
+        
+        if (header == NULL) {
+            fprintf(stderr, "Failed to read header\n");
+            continue;
+        }
+        
+        if (last_header && check_if_same(header, last_header)) {
+            printf("Received duplicate header, ignoring...\n");
+            destroy_header(header);
+            continue;
+        }
+        
+        if (is_header_on_receive_buffer(header)) {
+            printf("Filtered as already in buffer: ");
+            destroy_header(header);
+            continue;
+        }
+        
         update_receive_buffer(header);
         copy_header_deep(&last_header, header);
+        kermit_protocol_header* temp;
+
+        while ((temp = get_first_in_line_receive_buffer()) != NULL) {
+            print_header(temp);
+            process_message(temp);
+            destroy_header(temp);
+        }
     }
 }
 
@@ -121,6 +125,7 @@ void client(char* interface, unsigned char server_mac[6], int port){
         if (input == 'q') break;
         if (input == -1) continue; // timeout, volta para o loop
 
+        if (!curr){
         switch (input) {
             case 'w':
                 move_up(grid, player_pos, sock, interface, server_mac);
@@ -137,7 +142,7 @@ void client(char* interface, unsigned char server_mac[6], int port){
             default:
                 break;
         }
-        print_receive_buffer();
+        }
     }
 }
 

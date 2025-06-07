@@ -3,6 +3,7 @@
 
 #include "socket.h"
 #define RECEIVE_BUFFER_SIZE (2 << SEQUENCE_SIZE)
+// #define RECEIVE_BUFFER_SIZE 16
 
 unsigned int initialize_receive_buffer();
 unsigned int is_header_on_receive_buffer(kermit_protocol_header* header);
