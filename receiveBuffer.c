@@ -44,12 +44,6 @@ void insert_in_i_receive_buffer(kermit_protocol_header* header, unsigned int ind
 
     // Insert the new header at the specified index
     global_receive_buffer[index] = header;
-
-    // identify expected sequence number for data type
-    unsigned int seq = convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE);
-    if (seq == expected_sequence && strcmp((const char*)header->type, DATA) == 0) {
-        expected_sequence = (expected_sequence + 1) % (1 << SEQUENCE_SIZE);
-    }
 }
 
 unsigned int update_receive_buffer(kermit_protocol_header* header) {
@@ -64,21 +58,13 @@ unsigned int update_receive_buffer(kermit_protocol_header* header) {
 
     // Converte sequência e tipo para decimal para comparação
     unsigned int seq = convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE);
-    unsigned int type = convert_binary_to_decimal(header->type, TYPE_SIZE);
 
     // Encontra a posição correta para inserir o cabeçalho
     unsigned int i = 0;
     while (global_receive_buffer[i] != NULL && i < RECEIVE_BUFFER_SIZE) {
         unsigned int temp_seq = convert_binary_to_decimal(global_receive_buffer[i]->sequence, SEQUENCE_SIZE);
-        unsigned int temp_type = convert_binary_to_decimal(global_receive_buffer[i]->type, TYPE_SIZE);
 
         // Verifica se o cabeçalho atual é maior que o cabeçalho no buffer
-
-        // if ((type == temp_type && checkIfNumberIsBigger(seq, temp_seq))) {
-        //     insert_in_i_receive_buffer(header, i);
-        //     return 1;
-        // }
-
         if (!checkIfNumberIsBigger(seq, temp_seq)) {
             insert_in_i_receive_buffer(header, i);
             return 1;

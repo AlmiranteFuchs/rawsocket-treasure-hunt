@@ -7,18 +7,6 @@ FILE* curr = NULL;
 unsigned int curr_tam = 0;
 unsigned int expected_sequence_local = 0;
 
-// int getch() {
-//     struct termios oldt, newt;
-//     int ch;
-//     tcgetattr(STDIN_FILENO, &oldt);
-//     newt = oldt;
-//     newt.c_lflag &= ~(ICANON | ECHO);
-//     tcsetattr(STDIN_FILENO, TCSANOW, &newt);
-//     ch = getchar();
-//     tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
-//     return ch;
-// }
-
 int getch_timeout(int usec_timeout) {
     struct termios oldt, newt;
     int ch = -1;
@@ -216,26 +204,6 @@ void read_to_file(kermit_protocol_header* header){
     fwrite(header->data, sizeof(unsigned char), size, curr);
     fflush(curr);
     printf("Wrote %u bytes to file.\n", size);
-
-    // kermit_protocol_header* buffer = NULL;
-    // while ((buffer = get_first_in_line_receive_buffer()) != NULL) {
-    //     unsigned int type = convert_binary_to_decimal(buffer->type, TYPE_SIZE);
-    //     if (type != 5) {
-    //         printf("Received non-data type header, expected data type.\n");
-    //         update_receive_buffer(buffer);
-    //         destroy_header(buffer);
-    //         break;
-    //     }
-
-    //     size = convert_binary_to_decimal(buffer->size, SIZE_SIZE);
-    //     fwrite(buffer->data, sizeof(unsigned char), size, curr);
-    //     fflush(curr); 
-    //     printf("Wrote %u bytes to file.\n", size);
-
-    //     destroy_header(buffer);
-        
-    //     expected_sequence_local++;
-    // }
 }
 
 /*
