@@ -4,6 +4,6 @@ int main(){
     // set seed
     srand(time(NULL));
 
-    server("lo", 8080);
+    server("veth2", 8080);
     return 0;
 }
