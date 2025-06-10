@@ -53,6 +53,7 @@ void server(char* interface, int port){
     
     Treasure** treasures = malloc(sizeof(Treasure*) * 8);
     Position* player_pos = initialize_player();
+    
     char** grid = initialize_server_grid(player_pos, treasures);
     last_header = NULL;
     initialize_receive_buffer();

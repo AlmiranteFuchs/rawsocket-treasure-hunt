@@ -1,27 +1,40 @@
 CC := gcc
-CFLAGS := -Wall -g
+CFLAGS := -Wall -g -Isrc
 
-CLIENT_SOURCE := client.c clientFunctions.c socket.c game.c receiveBuffer.c
-CLIENT_OBJ := client.o clientFunctions.o socket.o game.o receiveBuffer.o
+SRC_DIR := src
+BUILD_DIR := dist
 
-SERVER_SOURCE := server.c serverFunctions.c socket.c game.c receiveBuffer.c
-SERVER_OBJ := server.o serverFunctions.o socket.o game.o receiveBuffer.o
+CLIENT_SOURCE := client.c $(SRC_DIR)/clientFunctions.c $(SRC_DIR)/socket.c $(SRC_DIR)/game.c $(SRC_DIR)/receiveBuffer.c
+SERVER_SOURCE := server.c $(SRC_DIR)/serverFunctions.c $(SRC_DIR)/socket.c $(SRC_DIR)/game.c $(SRC_DIR)/receiveBuffer.c
+
+CLIENT_OBJ := $(patsubst %.c, $(BUILD_DIR)/%.o, $(notdir $(CLIENT_SOURCE)))
+SERVER_OBJ := $(patsubst %.c, $(BUILD_DIR)/%.o, $(notdir $(SERVER_SOURCE)))
 
 TARGET_CLIENT := client
 TARGET_SERVER := server
 
 all: $(TARGET_CLIENT) $(TARGET_SERVER)
 
+# Link client
 $(TARGET_CLIENT): $(CLIENT_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
+# Link server
 $(TARGET_SERVER): $(SERVER_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-%.o: %.c
-	$(CC) $(CFLAGS) -c -o $@ $<
+# Compile source files to dist/ folder
+$(BUILD_DIR)/%.o: %.c | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+# Ensure dist/ exists
+$(BUILD_DIR):
+	mkdir -p $(BUILD_DIR)
 
 clean:
-	rm -f $(CLIENT_OBJ) $(SERVER_OBJ) $(TARGET_CLIENT) $(TARGET_SERVER)
+	rm -rf $(BUILD_DIR)/*.o $(TARGET_CLIENT) $(TARGET_SERVER)
 
 .PHONY: all clean
