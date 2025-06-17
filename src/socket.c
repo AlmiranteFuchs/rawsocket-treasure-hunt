@@ -285,8 +285,13 @@ kermit_protocol_header* read_bytes_into_header(unsigned char* buffer){
     unsigned int offset = START_SIZE;
     memcpy(header->start, buffer, START_SIZE); 
 
-    if (strcmp((char*) header->start, START) != 0) {
+    if (memcmp(header->start, START, START_SIZE) != 0) {
         fprintf(stderr, "Invalid start sequence\n");
+        printf("Start field: ");
+        for (int i = 0; i < START_SIZE; ++i) {
+          putchar(header->start[i]);
+        }
+        putchar('\n');
         free(header);
         return NULL;
     }
@@ -336,10 +341,13 @@ unsigned char* calculate_checksum(
         sum += (seq[i] == '1') ? 1 : 0;
 
     for (size_t i = 0; i < type_len; ++i)
-        sum += (type[i] == '1') ? 1 : 0;
+        sum += (type[i] == '1') ? 1 : 0;\
 
-    for (size_t i = 0; i < data_len; ++i) 
-        sum += count_ones_in_byte(data[i]); // Actual bytes, not ascii representation
+    if (data != NULL && data_len > 0) {
+        for (size_t i = 0; i < data_len; ++i) {
+            sum += count_ones_in_byte(data[i]);
+        }
+    }
 
     // Wrap result to 8 bits
     sum = sum % 256;
@@ -361,4 +369,27 @@ unsigned int check_if_same(kermit_protocol_header* header1, kermit_protocol_head
     }
     
     return 0;
+}
+
+unsigned int checksum_if_valid(kermit_protocol_header* header){
+    unsigned int data_size = convert_binary_to_decimal(header->size, SIZE_SIZE);
+
+    unsigned char* calculated = calculate_checksum(
+        header->size, SIZE_SIZE,
+        header->sequence, SEQUENCE_SIZE,
+        header->type, TYPE_SIZE,
+        header->data, data_size
+    );
+
+    // Compare byte by byte
+    int valid = 1;
+    for (int i = 0; i < CHECKSUM_SIZE; ++i) {
+        if (header->checksum[i] != calculated[i]) {
+            valid = 0;
+            break;
+        }
+    }
+
+    free(calculated);
+    return valid;
 }

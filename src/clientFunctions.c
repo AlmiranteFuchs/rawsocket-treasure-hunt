@@ -7,6 +7,14 @@ FILE* curr = NULL;
 unsigned int curr_tam = 0;
 unsigned int expected_sequence_local = 0;
 
+// States of the client
+typedef enum {
+    STATE_PLAYING,
+    STATE_DATA_TRANSFER
+} ProtocolState;
+
+ProtocolState state = STATE_PLAYING;
+
 // Terminal manipulation
 int getch_timeout(int usec_timeout) {
     struct termios oldt, newt;
@@ -77,15 +85,12 @@ void listen_to_server(int sock, char* interface, unsigned char server_mac[6], ch
             destroy_header(header);
             continue;
         }
-
-        // Checksum validation
         
         update_receive_buffer(header);
         copy_header_deep(&last_header, header);
         kermit_protocol_header* temp;
 
         while ((temp = get_first_in_line_receive_buffer()) != NULL) {
-            // print_header(temp);
             process_message(temp);
             destroy_header(temp);
         }
@@ -181,44 +186,81 @@ void create_file(kermit_protocol_header* header){
     curr = file;
 }
 
-void process_message(kermit_protocol_header* header){
+void process_message(kermit_protocol_header* header) {
     unsigned int type = convert_binary_to_decimal(header->type, TYPE_SIZE);
 
-    switch (type) {
-        // tamanho
-        case 4:
-            int size = convert_binary_to_decimal(header->size, SIZE_SIZE);
-            printf("Received size: %u\n", size);
-            curr_tam = size;
+    switch (state) {
+        // --- Default game logic ---
+        case STATE_PLAYING:
+            switch (type) {
+                case 6: {
+                    // Texto + ack + nome
+                    create_file(header);
+                    state = STATE_DATA_TRANSFER;
+                    break;
+                }
+                case 7: {
+                    // Vídeo + ack + nome (TODO)
+                    // create_file(header);
+                    // state = STATE_DATA_TRANSFER;
+                    break;
+                }
+                case 8: {
+                    // Imagem + ack + nome (TODO)
+                    // create_file(header);
+                    // state = STATE_DATA_TRANSFER;
+                    break;
+                }
+                default: {
+                    printf("Unknown message type (PLAYING): %u\n", type);
+                    break;
+                }
+            }
             break;
-        // dados
-        case 5:
-            printf("Seq: %u\n", convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE));
-            read_to_file(header);
+
+        // --- File receiving logic ---
+        case STATE_DATA_TRANSFER:
+            switch (type) {
+                case 4: {
+                    // Tamanho do arquivo
+                    int size = convert_binary_to_decimal(header->size, SIZE_SIZE);
+                    printf("Received size: %u\n", size);
+                    curr_tam = size;
+                    break;
+                }
+                case 5: {
+                    // Dados do arquivo
+                    printf("Seq: %u\n", convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE));
+                    read_to_file(header);
+                    break;
+                }
+                case 9: {
+                    // Fim do arquivo
+                    printf("End of file received.\n");
+                    if (curr != NULL) {
+                        fclose(curr);
+                        curr = NULL;
+                    }
+                    curr_tam = 0;
+                    expected_sequence_local = 0;
+                    state = STATE_PLAYING;
+                    break;
+                }
+                case 15: {
+                    // Erro
+                    printf("Received error message.\n");
+                    break;
+                }
+                default: {
+                    printf("Unknown message type (DATA_TRANSFER): %u\n", type);
+                    break;
+                }
+            }
             break;
-        // texto + ack + nome
-        case 6:
-            create_file(header);
-            break;
-        // video + ack + nome
-        case 7:
-            break;
-        // imagem + ack + nome
-        case 8:
-            break;
-        // fim de arquivo
-        case 9:
-            printf("End of file received.\n");
-            fclose(curr);
-            curr = NULL;
-            curr_tam = 0;
-            expected_sequence_local = 0;
-            break;
-        // erro
-        case 15:
-            break;
+
+        // --- Catch unknown state ---
         default:
-            printf("Unknown message type: %u\n", type);
+            printf("Unknown state: %d\n", state);
             break;
     }
 }
