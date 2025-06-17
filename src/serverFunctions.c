@@ -1,4 +1,5 @@
 #include "server.h"
+#include <stdio.h>
 
 extern kermit_protocol_header* global_header_buffer;
 extern kermit_protocol_header** global_receive_buffer;
@@ -149,9 +150,17 @@ void process_message(kermit_protocol_header* header, char** grid, Position* play
 void send_filename(char* filename, unsigned char* type, int sock, char* interface, unsigned char server_mac[6]){
     // copy the size of the filename into size
     unsigned int filename_length = strlen(filename);
-    unsigned char* size_bin = convert_decimal_to_binary(filename_length, SIZE_SIZE);
+    unsigned int data_size = filename_length + 1; // include null terminator!
 
-    kermit_protocol_header* header = create_header(size_bin, type, (unsigned char*) filename);
+    unsigned char* size_bin = convert_decimal_to_binary(data_size, SIZE_SIZE);
+
+    unsigned char* filename_data = malloc(data_size);
+    memcpy(filename_data, filename, filename_length);
+    filename_data[filename_length] = '\0'; // make sure it ends correctly
+
+    kermit_protocol_header* header = create_header(size_bin, type, filename_data);
+    free(filename_data);  // safe to free, header made its own copy
+
     if (header == NULL) {
         fprintf(stderr, "Failed to create header\n");
         free(size_bin);
@@ -161,6 +170,11 @@ void send_filename(char* filename, unsigned char* type, int sock, char* interfac
     const unsigned char* message = generate_message(header);
     unsigned int message_size = getHeaderSize(header);
     send_package(sock, interface, server_mac, message, message_size);
+
+    // Clean up
+    free(size_bin);
+    free((void*) message); // only if generate_message() mallocs
+    destroy_header(header);
 }
 
 void send_file_size(FILE* file, int sock, char* interface, unsigned char server_mac[6]){

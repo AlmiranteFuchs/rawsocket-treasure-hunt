@@ -287,11 +287,6 @@ kermit_protocol_header* read_bytes_into_header(unsigned char* buffer){
 
     if (memcmp(header->start, START, START_SIZE) != 0) {
         fprintf(stderr, "Invalid start sequence\n");
-        printf("Start field: ");
-        for (int i = 0; i < START_SIZE; ++i) {
-          putchar(header->start[i]);
-        }
-        putchar('\n');
         free(header);
         return NULL;
     }
