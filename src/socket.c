@@ -51,6 +51,20 @@ unsigned int convert_binary_to_decimal(const unsigned char* binary, size_t size)
     return decimal;
 }
 
+unsigned char* convert_decimal_to_binary_ascii(unsigned int value, size_t size) {
+    unsigned char* binary = malloc(size + 1);
+    if (!binary) return NULL;
+
+    for (size_t i = 0; i < size; i++) {
+        binary[size - 1 - i] = (value & (1 << i)) ? '1' : '0';
+    }
+
+    // Optional null-terminator for printing/debugging (not used in memcpy)
+    binary[size] = '\0';
+
+    return binary;
+}
+
 unsigned char* convert_decimal_to_binary(unsigned int decimal, size_t size) {
     unsigned char* binary = malloc(size);
     if (binary == NULL) {
@@ -121,21 +135,18 @@ void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender
 }
 
 kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned char type[TYPE_SIZE], unsigned char* data){
+    // Initializes header 
     kermit_protocol_header* header = (kermit_protocol_header*) malloc(sizeof(kermit_protocol_header));
     if (header == NULL)
         return NULL;
 
     memcpy(header->start, START, strlen(START));
     memcpy(header->size, size, SIZE_SIZE);
-    // memcpy(header->sequence, sequence, SEQUENCE_SIZE);
     memcpy(header->type, type, TYPE_SIZE);
-    // create checksum function later
-    memset(header->checksum, 0, sizeof(header->checksum));
 
+    // Creates data
+    unsigned int data_size = convert_binary_to_decimal(size, SIZE_SIZE);
     if (data != NULL) {
-        unsigned int data_size = convert_binary_to_decimal(size, SIZE_SIZE);
-        printf("Data size: %u\n", data_size);
-        printf("Data: %s\n", data);
         header->data = malloc(data_size);
         if (header->data != NULL) {
             memcpy(header->data, data, data_size);
@@ -144,20 +155,18 @@ kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned ch
         header->data = NULL;
     }
 
-    // /*
-    // * Checks if the global header buffer is set and if the types match to calculate the next sequence number
-    // */
-    // if (global_header_buffer && memcmp(global_header_buffer->type, type, TYPE_SIZE) == 0) {
-    //     unsigned int seq = convert_binary_to_decimal(global_header_buffer->sequence, SEQUENCE_SIZE);
-    //     seq = (seq + 1) % (1 << SEQUENCE_SIZE);
-    //     unsigned char* seq_bin = convert_decimal_to_binary(seq, SEQUENCE_SIZE);
-    //     memcpy(header->sequence, seq_bin, SEQUENCE_SIZE);
+    // Calculates checksum
+    unsigned char* checksum = calculate_checksum(
+        header->size, SIZE_SIZE,           // ASCII binary
+        header->sequence, SEQUENCE_SIZE,     // ASCII binary
+        header->type, TYPE_SIZE,           // ASCII binary
+        header->data, data_size            // Raw binary
+    );
+    
+    memcpy(header->checksum, checksum, CHECKSUM_SIZE);
+    free(checksum);
 
-    //     free(seq_bin);
-    // } else {
-    //     memset(header->sequence, '0', SEQUENCE_SIZE);
-    // }
-
+    // Manages global buffer
     if (global_header_buffer) {
         unsigned int seq = convert_binary_to_decimal(global_header_buffer->sequence, SEQUENCE_SIZE);
         seq = (seq + 1) % (1 << SEQUENCE_SIZE);
@@ -301,6 +310,42 @@ kermit_protocol_header* read_bytes_into_header(unsigned char* buffer){
     }
 
     return header;
+}
+
+int count_ones_in_byte(unsigned char byte) {
+    int count = 0;
+    while (byte) {
+        count += byte & 1;
+        byte >>= 1;
+    }
+    return count;
+}
+
+unsigned char* calculate_checksum(
+    const unsigned char size[], size_t size_len,
+    const unsigned char seq[], size_t seq_len,
+    const unsigned char type[], size_t type_len,
+    const unsigned char* data, size_t data_len
+) {
+    unsigned int sum = 0;
+
+    for (size_t i = 0; i < size_len; ++i)
+        sum += (size[i] == '1') ? 1 : 0;
+
+    for (size_t i = 0; i < seq_len; ++i)
+        sum += (seq[i] == '1') ? 1 : 0;
+
+    for (size_t i = 0; i < type_len; ++i)
+        sum += (type[i] == '1') ? 1 : 0;
+
+    for (size_t i = 0; i < data_len; ++i) 
+        sum += count_ones_in_byte(data[i]); // Actual bytes, not ascii representation
+
+    // Wrap result to 8 bits
+    sum = sum % 256;
+
+    // Return ASCII binary string (e.g., 13 → "00001101")
+    return convert_decimal_to_binary_ascii(sum, CHECKSUM_SIZE);
 }
 
 unsigned int check_if_same(kermit_protocol_header* header1, kermit_protocol_header* header2) {

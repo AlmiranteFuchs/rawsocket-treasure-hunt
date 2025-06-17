@@ -5,6 +5,7 @@
 #include "receiveBuffer.h"
 #include <termios.h>
 
+// Initiates default client behaviour
 void client(char* interface, unsigned char server_mac[6], int port);
 
 kermit_protocol_header* move(int sock, char* interface, unsigned char server_mac[6], unsigned char* direction);

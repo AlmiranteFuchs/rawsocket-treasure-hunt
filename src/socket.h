@@ -42,7 +42,7 @@
 #define TYPE_SIZE 4
 #define CHECKSUM_SIZE 8
 
-// Kermit protocol header
+// Kermit protocol header ( ASCII for binary representation )
 typedef struct {
     unsigned char start[START_SIZE];
     unsigned char size[SIZE_SIZE];
@@ -62,14 +62,17 @@ void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender
 
 kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned char type[TYPE_SIZE], unsigned char* data);
 kermit_protocol_header* read_bytes_into_header(unsigned char* buffer);
+unsigned char* calculate_checksum(const unsigned char size[], size_t size_len, const unsigned char seq[], size_t seq_len, const unsigned char type[], size_t type_len, const unsigned char* data, size_t data_len);
 unsigned int getHeaderSize(kermit_protocol_header* header);
 void destroy_header(kermit_protocol_header* header);
 void copy_header_deep(kermit_protocol_header** dest, const kermit_protocol_header* src);
 const unsigned char* generate_message(kermit_protocol_header* header);
 unsigned int check_if_same(kermit_protocol_header* header1, kermit_protocol_header* header2);
+unsigned int checksum_if_valid(kermit_protocol_header* header);
 void print_header(kermit_protocol_header* header);
 
 unsigned int convert_binary_to_decimal(const unsigned char* binary, size_t size);
+unsigned char* convert_decimal_to_binary_ascii(unsigned int value, size_t size);
 unsigned char* convert_decimal_to_binary(unsigned int decimal, size_t size);
 unsigned int checkIfNumberIsBigger(unsigned int a, unsigned int b);
 
