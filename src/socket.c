@@ -1,4 +1,5 @@
 #include "socket.h"
+#include "log.h"
 
 kermit_protocol_header* global_header_buffer = NULL;
 kermit_protocol_header* last_header = NULL;
@@ -7,7 +8,7 @@ unsigned int expected_sequence = 0;
 int create_raw_socket(){
     int sock = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
     if (sock == -1){
-        fprintf(stderr, "Error creating socket\n");
+        log_err("Error creating socket\n");
         exit(-1);
     }
 
@@ -86,7 +87,7 @@ int bind_raw_socket(int sock, char* interface, int port){
     address.sll_ifindex = ifindex;
 
     if(bind(sock, (struct sockaddr*)&address, sizeof(address)) == -1){
-        fprintf(stderr, "Error binding socket to interface\n");
+        log_err("Error binding socket to interface\n");
         exit(-1);
     }
 
@@ -94,7 +95,7 @@ int bind_raw_socket(int sock, char* interface, int port){
     mr.mr_ifindex = ifindex;
     mr.mr_type = PACKET_MR_PROMISC;
     if (setsockopt(sock, SOL_PACKET, PACKET_ADD_MEMBERSHIP, &mr, sizeof(mr)) == -1){
-        fprintf(stderr, "Error setting setsockopt\n"); 
+        log_err("Error setting setsockopt\n"); 
         exit(-1);
     }
 
@@ -110,7 +111,7 @@ void connect_raw_socket(int sock, char* interface, unsigned char dest_mac[6]) {
     memcpy(addr.sll_addr, dest_mac, ETH_ALEN);
 
     if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
-        fprintf(stderr, "connect() failed: %s (errno=%d)\n", strerror(errno), errno);
+        log_err("connect() failed: %s (errno=%d)\n", strerror(errno), errno);
         exit(-1);
     }
 }
@@ -120,7 +121,7 @@ void send_ack_or_nack(int sock, char* interface, unsigned char server_mac[6], ke
 
     kermit_protocol_header* response = create_ack_or_nack_header(received, type_str);
     if (!response) {
-        fprintf(stderr, "Failed to create %s header\n", strcmp(type_str, ACK) == 0 ? "ACK" : "NAK");
+        log_err("Failed to create %s header\n", strcmp(type_str, ACK) == 0 ? "ACK" : "NAK");
         return;
     }
 
@@ -139,7 +140,7 @@ void send_package(int sock, char* interface, unsigned char dest_mac[6], const un
         perror("send failed");
         exit(-1);
     }
-    printf("Sent %zd bytes\n", sent);
+    log_v("Sent %zd bytes\n", sent);
 }
 
 void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender_addr, socklen_t* addr_len){
@@ -149,7 +150,7 @@ void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender
         perror("recvfrom failed");
         exit(-1);
     }
-    printf("Received %zd bytes\n", bytes);
+    log_v("Received %zd bytes\n", bytes);
 }
 
 kermit_protocol_header* create_ack_or_nack_header(kermit_protocol_header* original, const char* type_str) {
@@ -335,7 +336,7 @@ unsigned int checkIfNumberIsBigger(unsigned int a, unsigned int b){
 kermit_protocol_header* read_bytes_into_header(unsigned char* buffer){
     kermit_protocol_header* header = malloc(sizeof(kermit_protocol_header));
     if (header == NULL) {
-        fprintf(stderr, "Failed to allocate memory for header\n");
+        log_err("Failed to allocate memory for header\n");
         return NULL;
     }
 
@@ -343,7 +344,7 @@ kermit_protocol_header* read_bytes_into_header(unsigned char* buffer){
     memcpy(header->start, buffer, START_SIZE); 
 
     if (memcmp(header->start, START, START_SIZE) != 0) {
-        fprintf(stderr, "Invalid start sequence\n");
+        log_err("Invalid start sequence\n");
         free(header);
         return NULL;
     }
@@ -357,7 +358,7 @@ kermit_protocol_header* read_bytes_into_header(unsigned char* buffer){
     if (data_size > 0) {
         header->data = malloc(data_size);
         if (header->data == NULL) {
-            fprintf(stderr, "Failed to allocate memory for data\n");
+            log_err("Failed to allocate memory for data\n");
             free(header);
             return NULL;
         }

@@ -4,6 +4,7 @@
 #include "game.h"
 #include "receiveBuffer.h"
 #include <time.h>
+#include "log.h"
 #include <dirent.h>
 
 typedef struct {

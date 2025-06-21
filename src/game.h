@@ -3,6 +3,7 @@
 
 #include "stdlib.h"
 #include "stdio.h"
+#include "log.h"
 #include <termios.h>
 #include <unistd.h>
 

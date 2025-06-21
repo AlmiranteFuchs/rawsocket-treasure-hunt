@@ -1,4 +1,5 @@
 #include "game.h"
+#include "log.h"
 
 char** initialize_grid(Position* player_pos) {
     char** grid = (char**)malloc(GRID_SIZE * sizeof(char*));
@@ -45,12 +46,34 @@ void destroy_player(Position* player_pos) {
 }
 
 void print_grid(char** grid) {
-    printf("\033[2J\033[H"); 
+    // Clear screen and move cursor to top-left
+    printf("\033[2J\033[H");
 
-    printf("\nq to quit    w up    a left    s down    d right\n\n");
+    // Instruction bar
+    printf("\033[1;36m\nq to quit    w up    a left    s down    d right\n\n\033[0m");
+
     for (int i = 0; i < GRID_SIZE; i++) {
         for (int j = 0; j < GRID_SIZE; j++) {
-            printf("%c ", grid[i][j]);
+            char cell = grid[i][j];
+
+            // Set color based on cell content
+            switch (cell) {
+                case PLAYER:  // Green
+                    printf("\033[1;32m%c \033[0m", cell);
+                    break;
+                case WALL:    // Black (actually dark gray for visibility)
+                    printf("\033[1;30m%c \033[0m", cell);
+                    break;
+                case FOUND:   // Just a space (no visible character)
+                    printf("  ");
+                    break;
+                case UNFOUND: // Gray
+                    printf("\033[0;37m%c \033[0m", cell);
+                    break;
+                default:      // Any unknown cells
+                    printf("\033[1;35m%c \033[0m", cell);
+                    break;
+            }
         }
         printf("\n");
     }
@@ -79,7 +102,7 @@ void move_player(char** grid, Position* player_pos, char direction) {
 
     if (grid[new_x][new_y] != WALL) {
         if (grid[new_x][new_y] == EVENT) {
-            printf("Found a treasure!\n");
+            log_v("Found a treasure!\n");
         } 
         else {
             grid[player_pos->x][player_pos->y] = FOUND; 
@@ -91,5 +114,5 @@ void move_player(char** grid, Position* player_pos, char direction) {
 
     }
 
-    printf("player_pos: %d %d\n", new_x, new_y);
+    log_info(" - player_pos: %d %d - ", new_x, new_y);
 }

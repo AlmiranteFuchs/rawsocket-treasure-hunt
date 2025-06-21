@@ -1,5 +1,7 @@
 #include "game.h"
+#include "log.h"
 #include "server.h"
+#include "socket.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -20,14 +22,14 @@ unsigned int wait_for_ack_or_nack(kermit_protocol_header *sent_header) {
     FD_ZERO(&readfds);
     FD_SET(g_server_sock, &readfds);
     tv.tv_sec = 0;
-    tv.tv_usec = 10000000; // 10000ms
+    tv.tv_usec = 1000000; // 1000ms
 
     int retval = select(g_server_sock + 1, &readfds, NULL, NULL, &tv);
     if (retval == -1) {
       perror("select()");
       return 0;
     } else if (retval == 0) {
-      printf("Timeout waiting for ACK/NACK\n");
+        log_info("Timeout waiting for ACK/NACK");
       return 0;
     }
 
@@ -45,8 +47,7 @@ unsigned int wait_for_ack_or_nack(kermit_protocol_header *sent_header) {
         }
     } else if (strncmp((char*)response->type, NAK, TYPE_SIZE) == 0) {
         if (memcmp(response->sequence, sent_header->sequence, SEQUENCE_SIZE) == 0) {
-            printf("Nak lol\n");
-            exit(1);
+            log_info("Received NACK for seq: #%d", convert_binary_to_decimal(response->sequence, SEQUENCE_SIZE));
             destroy_header(response);
             return 0;
         }
@@ -57,6 +58,23 @@ unsigned int wait_for_ack_or_nack(kermit_protocol_header *sent_header) {
   }
 
   return 0; // fallback
+}
+
+void send_package_until_ack(int sock, char* interface, unsigned char* mac, 
+    const unsigned char* message, size_t message_size, 
+    kermit_protocol_header* header) {
+
+    int attempt = 0;
+    do {
+        if (attempt > 0) {
+            unsigned int seq = convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE);
+            log_info("Resending package #%d, attempt #%d",seq, attempt);
+        }
+        send_package(sock, interface, mac, message, message_size);
+        attempt++;
+    } while (wait_for_ack_or_nack(header) == 0);
+    log("ACK OK\n");
+    
 }
 
 void receive_and_buffer_packet() {
@@ -83,7 +101,7 @@ void receive_and_buffer_packet() {
 }
 
 void listen_server(Treasure** treasures, Position* player_pos, char** grid){
-    printf("Server waiting for packets on loopback...\n");
+    log_info("Server waiting for packets on loopback...");
     while (1) {
         receive_and_buffer_packet();
 
@@ -93,7 +111,6 @@ void listen_server(Treasure** treasures, Position* player_pos, char** grid){
             destroy_header(temp);
         }
     }
-    printf("end\n");
 }
 
 char** initialize_server_grid(Position* player_pos, Treasure** treasures){
@@ -103,7 +120,7 @@ char** initialize_server_grid(Position* player_pos, Treasure** treasures){
 
     dir = opendir("./objetos");
     if (!dir)
-        fprintf(stderr, "Failed to open files directory\n");
+        log_err("Failed to open files directory");
 
     // set the 8 treasures locations
     for (int i = 0; i < 8; i++){
@@ -123,7 +140,7 @@ char** initialize_server_grid(Position* player_pos, Treasure** treasures){
 
         entry = readdir(dir);
         if (!entry){
-            fprintf(stderr, "Not enough files in the directory\n");
+            log_err("Not enough files in the directory");
             return NULL;
         }
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
@@ -137,7 +154,7 @@ char** initialize_server_grid(Position* player_pos, Treasure** treasures){
 }
 
 unsigned int isPlayerOnTreasure(char** grid, Position* player_pos){
-    printf("Grid[%d][%d]: %c\n", player_pos->x, player_pos->y, grid[player_pos->x][player_pos->y]);
+    log_v("Grid[%d][%d]: %c", player_pos->x, player_pos->y, grid[player_pos->x][player_pos->y]);
     return (grid[player_pos->x][player_pos->y] == EVENT);
 }
 
@@ -147,23 +164,23 @@ void process_message(kermit_protocol_header* header, char** grid, Position* play
 
     switch (type) {
         case 11:
-            printf("Move Up\n");
+            log_info("Move Up");
             move_type = '0';
             break;
         case 12: 
-            printf("Move Down\n");
+            log_info("Move Down");
             move_type = '1';
             break;
         case 13: 
-            printf("Move Left\n");
+            log_info("Move Left");
             move_type = '2';
             break;
         case 10:
-            printf("Move Right\n");
+            log_info("Move Right");
             move_type = '3';
             break;
         default:
-            printf("Unknown message type: %u\n", type);
+            log_err("Unknown message type: %u", type);
             break;
     }
 
@@ -185,7 +202,7 @@ void process_message(kermit_protocol_header* header, char** grid, Position* play
 
     char* file_path = malloc(strlen("./objetos/") + strlen(file_name) + 1);
     if (file_path == NULL) {
-        fprintf(stderr, "Failed to allocate memory for file path\n");
+        log_err("Failed to allocate memory for file path");
         return;
     }
     sprintf(file_path, "./objetos/%s", file_name);
@@ -207,14 +224,16 @@ void send_filename(char* filename, unsigned char* type){
     free(filename_data);  // safe to free, header made its own copy
 
     if (header == NULL) {
-        fprintf(stderr, "Failed to create header\n");
+        log_err("Failed to create header");
         free(size_bin);
         return;
     }
 
     const unsigned char* message = generate_message(header);
     unsigned int message_size = getHeaderSize(header);
-    send_package(g_server_sock, g_server_interface, g_client_mac, message, message_size);
+
+    log("Sending file name to client");
+    send_package_until_ack(g_server_sock, g_server_interface, g_client_mac, message, message_size, header);
 
     // Clean up
     free(size_bin);
@@ -224,7 +243,7 @@ void send_filename(char* filename, unsigned char* type){
 
 void send_file_size(FILE* file){
     if (file == NULL) {
-        fprintf(stderr, "File pointer is NULL\n");
+        log_err("File pointer is NULL");
         return;
     }
 
@@ -237,12 +256,14 @@ void send_file_size(FILE* file){
 
     kermit_protocol_header* header = create_header(size_bin, (unsigned char*) SIZE, NULL);
     if (header == NULL) {
-        fprintf(stderr, "Failed to create header for file size\n");
+        log_err( "Failed to create header for file size");
         return;
     }
 
     const unsigned char* message = generate_message(header);
     unsigned int message_size = getHeaderSize(header);
+
+    log("Sending file size to client");
     send_package(g_server_sock, g_server_interface, g_client_mac, message, message_size);
 
     destroy_header(header);
@@ -255,26 +276,28 @@ void send_end_of_file(){
     memcpy(size, "0000000", SIZE_SIZE);
     kermit_protocol_header* header = create_header(size, end_type, NULL);
     if (header == NULL) {
-        fprintf(stderr, "Failed to create end of file header\n");
+        log_err("Failed to create end of file header");
         return;
     }
 
     const unsigned char* message = generate_message(header);
     unsigned int message_size = getHeaderSize(header);
-    send_package(g_server_sock, g_server_interface, g_client_mac, message, message_size);
+
+    log("Sending end of file to client");
+    send_package_until_ack(g_server_sock, g_server_interface, g_client_mac, message, message_size, header);
 
     destroy_header(header);
 }
 
 void send_file_packages(char* filename, unsigned char* type){
     if (filename == NULL || type == NULL) {
-        fprintf(stderr, "Filename or type is NULL\n");
+        log_err("Filename or type is NULL");
         return;
     }
 
     FILE* file = fopen(filename, "rb");
     if (file == NULL) {
-        fprintf(stderr, "Failed to open file: %s\n", filename);
+        log_err("Failed to open file: %s", filename);
         return;
     }
 
@@ -286,6 +309,8 @@ void send_file_packages(char* filename, unsigned char* type){
     unsigned char data[MAX_DATA_SIZE];
     size_t bytes_read;
 
+    log("Sending file data to client:");
+
     for (int sequence = 0; (bytes_read = fread(data, 1, MAX_DATA_SIZE, file)) > 0; sequence++) {
         unsigned char size_bin[SIZE_SIZE];
 
@@ -294,16 +319,16 @@ void send_file_packages(char* filename, unsigned char* type){
 
         kermit_protocol_header* header = create_header(size_bin, (unsigned char*) DATA, data);
         if (header == NULL) {
-            fprintf(stderr, "Failed to create header for data\n");
+            log_err("Failed to create header for data");
             fclose(file);
             return;
         }
 
         const unsigned char* message = generate_message(header);
         unsigned int message_size = getHeaderSize(header);
-        send_package(g_server_sock, g_server_interface, g_client_mac, message, message_size);
 
-        unsigned int result = wait_for_ack_or_nack( header);
+        log_info("Sending File data for seq: #%d", convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE));
+        send_package_until_ack(g_server_sock, g_server_interface, g_client_mac, message, message_size, header);
 
         destroy_header(header);
     }
@@ -331,7 +356,7 @@ void send_file(char* filename){
             send_file_packages(filename, (unsigned char*) IMAGE_ACK_NAME);
             break;
         default:
-            fprintf(stderr, "Unknown file type: %s\n", filename);
+            log_err("Unknown file type: %s", filename);
             break;
     }
 }

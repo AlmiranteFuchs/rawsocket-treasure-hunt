@@ -1,6 +1,8 @@
 #include "client.h"
+#include "log.h"
 #include "socket.h"
 #include <stdio.h>
+#include <unistd.h>
 
 // --- Globals for socket communication ---
 int g_sock = -1;
@@ -78,27 +80,27 @@ void listen_to_server(int sock, char* interface, unsigned char server_mac[6], ch
         receive_package(sock, buffer, &sender_addr, &addr_len);
         header = read_bytes_into_header(buffer);
         if (header == NULL) {
-            fprintf(stderr, "Failed to read header\n");
+            log_err("Failed to read header");
             continue;
         }
 
         //  Duplicate validation
         if (last_header && check_if_same(header, last_header)) {
-            printf("Received duplicate header, ignoring...\n");
+            log_v("Received duplicate header, ignoring...");
             destroy_header(header);
             continue;
         }
         if (is_header_on_receive_buffer(header)) {
-            printf("Filtered as already in buffer: ");
+            log("Filtered as already in buffer: ");
             destroy_header(header);
             continue;
         }
 
         if (!checksum_if_valid(header)){
-            printf("Received packet with checksum error\n");
+            log_err("Received packet with checksum error");
 
-            printf("Sending NACK\n");
-            //send_ack_or_nack(sock, interface, server_mac, header, NAK);
+            log("Sending NACK for seq: #%d", convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE));
+            send_ack_or_nack(sock, interface, server_mac, header, NAK);
 
             destroy_header(header);
             continue;
@@ -110,6 +112,8 @@ void listen_to_server(int sock, char* interface, unsigned char server_mac[6], ch
 
         while ((temp = get_first_in_line_receive_buffer()) != NULL) {
             process_message(temp);
+            sleep(1);
+            log("Sending ACK\n");
             send_ack_or_nack(sock, interface, server_mac, temp, ACK);
             destroy_header(temp);
         }
@@ -123,11 +127,11 @@ kermit_protocol_header* move(unsigned char* direction){
     memcpy(type, direction, TYPE_SIZE);
     unsigned char* data = NULL;
 
-    printf("Sending move command\n");
+    log_v("Sending move command\n");
 
     kermit_protocol_header* header = create_header(size, type, data);
     if (header == NULL) {
-        fprintf(stderr, "Failed to create header\n");
+        log_err( "Failed to create header\n");
         return NULL;
     }
 
@@ -174,14 +178,14 @@ kermit_protocol_header* move_down(char** grid, Position* pos){
 
 void read_to_file(kermit_protocol_header* header){
     if (curr == NULL) {
-        fprintf(stderr, "No file is currently open to write data to.\n");
+        log_err( "No file is currently open to write data to.\n");
         return;
     }
 
     unsigned int size = convert_binary_to_decimal(header->size, SIZE_SIZE);
     fwrite(header->data, sizeof(unsigned char), size, curr);
     fflush(curr);
-    // printf("Wrote %u bytes to file.\n", size);
+    log_v("Wrote %u bytes to file.\n", size);
 }
 
 /*
@@ -191,7 +195,7 @@ void read_to_file(kermit_protocol_header* header){
 */
 void create_file(kermit_protocol_header* header){
     // create new file with its title and extension
-    printf("Creating file: %s\n", header->data);
+    log_info("Creating file: %s", header->data);
 
     FILE* file = fopen((const char*) header->data, "w+");
     if (!file){
@@ -210,24 +214,27 @@ void process_message(kermit_protocol_header* header) {
             switch (type) {
                 case 6: {
                     // Texto + ack + nome
+                    log_info("Starting to receive Text data");
                     create_file(header);
                     state = STATE_DATA_TRANSFER;
                     break;
                 }
                 case 7: {
                     // Vídeo + ack + nome (TODO)
+                    log_info("Starting to receive Video data");
                     // create_file(header);
                     // state = STATE_DATA_TRANSFER;
                     break;
                 }
                 case 8: {
                     // Imagem + ack + nome (TODO)
+                    log_info("Starting to receive image data");
                     // create_file(header);
                     // state = STATE_DATA_TRANSFER;
                     break;
                 }
                 default: {
-                    printf("Unknown message type (PLAYING): %u\n", type);
+                    log_err("Unknown message type (PLAYING): %u\n", type);
                     break;
                 }
             }
@@ -239,19 +246,19 @@ void process_message(kermit_protocol_header* header) {
                 case 4: {
                     // Tamanho do arquivo
                     int size = convert_binary_to_decimal(header->size, SIZE_SIZE);
-                    printf("Received size: %u\n", size);
+                    log_v("File size received: %u\n", size);
                     curr_tam = size;
                     break;
                 }
                 case 5: {
                     // Dados do arquivo
-                    printf("Seq: %u\n", convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE));
+                    log_info("File data received for seq: #%u", convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE));
                     read_to_file(header);
                     break;
                 }
                 case 9: {
                     // Fim do arquivo
-                    printf("End of file received.\n");
+                    log_info("End of file received.\n");
                     if (curr != NULL) {
                         fclose(curr);
                         curr = NULL;
@@ -263,11 +270,11 @@ void process_message(kermit_protocol_header* header) {
                 }
                 case 15: {
                     // Erro
-                    printf("Received error message.\n");
+                    log_info("Received error message.\n");
                     break;
                 }
                 default: {
-                    printf("Unknown message type (DATA_TRANSFER): %u\n", type);
+                    log_err("Unknown message type (DATA_TRANSFER): %u\n", type);
                     break;
                 }
             }
@@ -275,7 +282,7 @@ void process_message(kermit_protocol_header* header) {
 
         // --- Catch unknown state ---
         default:
-            printf("Unknown state: %d\n", state);
+            log_err("Unknown state: %d\n", state);
             break;
     }
 }

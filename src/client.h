@@ -3,6 +3,7 @@
 #include "socket.h"
 #include "game.h"
 #include "receiveBuffer.h"
+#include "log.h"
 #include <termios.h>
 
 // Initiates default client behaviour
