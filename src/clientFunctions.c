@@ -1,4 +1,12 @@
 #include "client.h"
+#include "socket.h"
+#include <stdio.h>
+
+// --- Globals for socket communication ---
+int g_sock = -1;
+char* g_interface = NULL;
+unsigned char g_server_mac[6];
+// --- -------------------------------- ---
 
 extern kermit_protocol_header* last_header;
 extern kermit_protocol_header** global_receive_buffer;
@@ -85,6 +93,16 @@ void listen_to_server(int sock, char* interface, unsigned char server_mac[6], ch
             destroy_header(header);
             continue;
         }
+
+        if (!checksum_if_valid(header)){
+            printf("Received packet with checksum error\n");
+
+            printf("Sending NACK\n");
+            //send_ack_or_nack(sock, interface, server_mac, header, NAK);
+
+            destroy_header(header);
+            continue;
+        }
         
         update_receive_buffer(header);
         copy_header_deep(&last_header, header);
@@ -92,12 +110,13 @@ void listen_to_server(int sock, char* interface, unsigned char server_mac[6], ch
 
         while ((temp = get_first_in_line_receive_buffer()) != NULL) {
             process_message(temp);
+            send_ack_or_nack(sock, interface, server_mac, temp, ACK);
             destroy_header(temp);
         }
     }
 }
 
-kermit_protocol_header* move(int sock, char* interface, unsigned char server_mac[6], unsigned char* direction){
+kermit_protocol_header* move(unsigned char* direction){
     unsigned char size[SIZE_SIZE] = "0000000";
     // unsigned char sequence[SEQUENCE_SIZE] = "00000";
     unsigned char type[TYPE_SIZE];
@@ -115,43 +134,39 @@ kermit_protocol_header* move(int sock, char* interface, unsigned char server_mac
     const unsigned char* generatedM = generate_message(header);
     unsigned int sizeMessage = getHeaderSize(header);
 
-    send_package(sock, interface, server_mac, generatedM, sizeMessage);
+    send_package(g_sock, g_interface, g_server_mac, generatedM, sizeMessage);
 
-    // unsigned char buffer[4096];
-    // struct sockaddr_ll sender_addr;
-    // socklen_t addr_len = sizeof(sender_addr);
-    // receive_package(sock, buffer, &sender_addr, &addr_len);
-
+    free((void*) generatedM);
     return header;
 }
 
-kermit_protocol_header* move_left(char** grid, Position* pos, int sock, char* interface, unsigned char server_mac[6]){
+kermit_protocol_header* move_left(char** grid, Position* pos){
     unsigned char direction[TYPE_SIZE] = LEFT;
-    kermit_protocol_header* header = move(sock, interface, server_mac, direction);
+    kermit_protocol_header* header = move(direction);
     move_player(grid, pos, '2');
     print_grid(grid);
     return header;
 }
 
-kermit_protocol_header* move_right(char** grid, Position* pos, int sock, char* interface, unsigned char server_mac[6]){
+kermit_protocol_header* move_right(char** grid, Position* pos){
     unsigned char direction[TYPE_SIZE] = RIGHT;
-    kermit_protocol_header* header = move(sock, interface, server_mac, direction);
+    kermit_protocol_header* header = move(direction);
     move_player(grid, pos, '3');
     print_grid(grid);
     return header;
 }
 
-kermit_protocol_header* move_up(char** grid, Position* pos, int sock, char* interface, unsigned char server_mac[6]){
+kermit_protocol_header* move_up(char** grid, Position* pos){
     unsigned char direction[TYPE_SIZE] = UP;
-    kermit_protocol_header* header = move(sock, interface, server_mac, direction);
+    kermit_protocol_header* header = move(direction);
     move_player(grid, pos, '0');
     print_grid(grid);
     return header;
 }
 
-kermit_protocol_header* move_down(char** grid, Position* pos, int sock, char* interface, unsigned char server_mac[6]){
+kermit_protocol_header* move_down(char** grid, Position* pos){
     unsigned char direction[TYPE_SIZE] = DOWN;
-    kermit_protocol_header* header = move(sock, interface, server_mac, direction);
+    kermit_protocol_header* header = move(direction);
     move_player(grid, pos, '1');
     print_grid(grid);
     return header;
@@ -265,11 +280,7 @@ void process_message(kermit_protocol_header* header) {
     }
 }
 
-void client(char* interface, unsigned char server_mac[6], int port){
-    // Socket config
-    int sock = create_raw_socket();
-    bind_raw_socket(sock, interface, port);
-
+void client(){
     // Initializes game logic
     Position* player_pos = initialize_player();
     char** grid = initialize_grid(player_pos);
@@ -285,7 +296,7 @@ void client(char* interface, unsigned char server_mac[6], int port){
         input = getch_timeout(100000); // 100ms
 
         // If server has anything to say, if there's not, we go back to the game ( timeout )
-        listen_to_server(sock, interface, server_mac, grid, player_pos);
+        listen_to_server(g_sock, g_interface, g_server_mac, grid, player_pos);
 
         if (input == 'q') break;
         if (input == -1) continue; // timeout de input, volta para o loop
@@ -293,20 +304,28 @@ void client(char* interface, unsigned char server_mac[6], int port){
         if (!curr){
         switch (input) {
             case 'w':
-                move_up(grid, player_pos, sock, interface, server_mac);
+                move_up(grid, player_pos);
                 break;
             case 'a':
-                move_left(grid, player_pos, sock, interface, server_mac);
+                move_left(grid, player_pos);
                 break;
             case 's':
-                move_down(grid, player_pos, sock, interface, server_mac);
+                move_down(grid, player_pos);
                 break;
             case 'd':
-                move_right(grid, player_pos, sock, interface, server_mac);
+                move_right(grid, player_pos);
                 break;
             default:
                 break;
         }
         }
     }
+}
+
+void initialize_connection_context(char* interface, unsigned char server_mac[6], int port) {
+    g_sock = create_raw_socket();
+    bind_raw_socket(g_sock, interface, port);
+
+    g_interface = interface;
+    memcpy(g_server_mac, server_mac, 6);
 }

@@ -115,6 +115,24 @@ void connect_raw_socket(int sock, char* interface, unsigned char dest_mac[6]) {
     }
 }
 
+void send_ack_or_nack(int sock, char* interface, unsigned char server_mac[6], kermit_protocol_header* received, const char* type_str){
+    if (!received || !type_str) return;
+
+    kermit_protocol_header* response = create_ack_or_nack_header(received, type_str);
+    if (!response) {
+        fprintf(stderr, "Failed to create %s header\n", strcmp(type_str, ACK) == 0 ? "ACK" : "NAK");
+        return;
+    }
+
+    const unsigned char* message = generate_message(response);
+    unsigned int message_size = getHeaderSize(response);
+
+    send_package(sock, interface, server_mac, message, message_size);
+
+    free((void*) message);
+    destroy_header(response);
+}
+
 void send_package(int sock, char* interface, unsigned char dest_mac[6], const unsigned char* message, size_t message_len) {
     ssize_t sent = send(sock, message, message_len, 0);
     if (sent == -1) {
@@ -132,6 +150,45 @@ void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender
         exit(-1);
     }
     printf("Received %zd bytes\n", bytes);
+}
+
+kermit_protocol_header* create_ack_or_nack_header(kermit_protocol_header* original, const char* type_str) {
+    if (original == NULL || type_str == NULL)
+        return NULL;
+
+    // Allocate and initialize
+    kermit_protocol_header* header = (kermit_protocol_header*) malloc(sizeof(kermit_protocol_header));
+    if (header == NULL)
+        return NULL;
+
+    memcpy(header->start, START, strlen(START));
+
+    // size = 0
+    unsigned char size[SIZE_SIZE];
+    memcpy(size, convert_decimal_to_binary(0, SIZE_SIZE), SIZE_SIZE);
+    memcpy(header->size, size, SIZE_SIZE);
+
+    // Copy sequence from original header
+    memcpy(header->sequence, original->sequence, SEQUENCE_SIZE);
+
+    // Type: ACK ("0000") or NAK ("0001")
+    memcpy(header->type, type_str, TYPE_SIZE);
+
+    // No data
+    header->data = NULL;
+
+    // Checksum
+    unsigned char* checksum = calculate_checksum(
+        header->size, SIZE_SIZE,
+        header->sequence, SEQUENCE_SIZE,
+        header->type, TYPE_SIZE,
+        header->data, 0
+    );
+
+    memcpy(header->checksum, checksum, CHECKSUM_SIZE);
+    free(checksum);
+
+    return header;
 }
 
 kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned char type[TYPE_SIZE], unsigned char* data){
@@ -155,17 +212,6 @@ kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned ch
         header->data = NULL;
     }
 
-    // Calculates checksum
-    unsigned char* checksum = calculate_checksum(
-        header->size, SIZE_SIZE,           // ASCII binary
-        header->sequence, SEQUENCE_SIZE,     // ASCII binary
-        header->type, TYPE_SIZE,           // ASCII binary
-        header->data, data_size            // Raw binary
-    );
-    
-    memcpy(header->checksum, checksum, CHECKSUM_SIZE);
-    free(checksum);
-
     // Manages global buffer
     if (global_header_buffer) {
         unsigned int seq = convert_binary_to_decimal(global_header_buffer->sequence, SEQUENCE_SIZE);
@@ -176,6 +222,17 @@ kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned ch
     } else {
         memset(header->sequence, '0', SEQUENCE_SIZE);
     }
+
+    // Calculates checksum
+    unsigned char* checksum = calculate_checksum(
+        header->size, SIZE_SIZE,           // ASCII binary
+        header->sequence, SEQUENCE_SIZE,     // ASCII binary
+        header->type, TYPE_SIZE,           // ASCII binary
+        header->data, data_size            // Raw binary
+    );
+    
+    memcpy(header->checksum, checksum, CHECKSUM_SIZE);
+    free(checksum);
 
     if (global_header_buffer == NULL) {
         global_header_buffer = (kermit_protocol_header*) malloc(sizeof(kermit_protocol_header));

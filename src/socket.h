@@ -58,9 +58,11 @@ void destroy_raw_socket(int sock);
 int bind_raw_socket(int sock, char* interface, int port);
 void connect_raw_socket(int sock, char* interface, unsigned char address[6]);
 void send_package(int sock, char* interface, unsigned char dest_mac[6], const unsigned char* message, size_t message_len);
+void send_ack_or_nack(int sock, char* interface, unsigned char server_mac[6], kermit_protocol_header* received, const char* type_str);
 void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender_addr, socklen_t* addr_len);
 
 kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned char type[TYPE_SIZE], unsigned char* data);
+kermit_protocol_header* create_ack_or_nack_header(kermit_protocol_header* original, const char* type_str);
 kermit_protocol_header* read_bytes_into_header(unsigned char* buffer);
 unsigned char* calculate_checksum(const unsigned char size[], size_t size_len, const unsigned char seq[], size_t seq_len, const unsigned char type[], size_t type_len, const unsigned char* data, size_t data_len);
 unsigned int getHeaderSize(kermit_protocol_header* header);
