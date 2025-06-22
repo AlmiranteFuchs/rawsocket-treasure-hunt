@@ -51,6 +51,12 @@ unsigned int wait_for_ack_or_nack(kermit_protocol_header *sent_header) {
             destroy_header(response);
             return 0;
         }
+    } else if (strncmp((char*)response->type, ERROR, TYPE_SIZE) == 0) {
+        if (memcmp(response->sequence, sent_header->sequence, SEQUENCE_SIZE) == 0) {
+            log_info("Received ERROR for seq: #%d", convert_binary_to_decimal(response->sequence, SEQUENCE_SIZE));
+            destroy_header(response);
+            return 2;
+        }
     }
 
     destroy_header(
@@ -60,10 +66,11 @@ unsigned int wait_for_ack_or_nack(kermit_protocol_header *sent_header) {
   return 0; // fallback
 }
 
-void send_package_until_ack(int sock, char* interface, unsigned char* mac, 
+int send_package_until_ack(int sock, char* interface, unsigned char* mac, 
     const unsigned char* message, size_t message_size, 
     kermit_protocol_header* header) {
 
+    int result = -1;
     int attempt = 0;
     do {
         if (attempt > 0) {
@@ -72,8 +79,19 @@ void send_package_until_ack(int sock, char* interface, unsigned char* mac,
         }
         send_package(sock, interface, mac, message, message_size);
         attempt++;
-    } while (wait_for_ack_or_nack(header) == 0);
-    log("ACK OK\n");
+
+        result = wait_for_ack_or_nack(header);
+    } while (result == 0);
+
+    if(result == 1){
+        log("ACK");
+    }else if(result == 2){
+        log("ACK ERROR");
+    }else{
+        log_err("Invalid return for movement request");
+    }
+     
+    return result;
 }
 
 void receive_and_buffer_packet() {
@@ -228,7 +246,7 @@ void process_message(kermit_protocol_header* header, char** grid, Position* play
     send_file(file_path);
 }
 
-void send_filename(char* filename, unsigned char* type){
+int send_filename(char* filename, unsigned char* type){
     // copy the size of the filename into size
     unsigned int filename_length = strlen(filename);
     unsigned int data_size = filename_length + 1; // include null terminator!
@@ -245,47 +263,69 @@ void send_filename(char* filename, unsigned char* type){
     if (header == NULL) {
         log_err("Failed to create header");
         free(size_bin);
-        return;
+        return 0;
     }
 
     const unsigned char* message = generate_message(header);
     unsigned int message_size = getHeaderSize(header);
 
-    log("Sending file name to client");
-    send_package_until_ack(g_server_sock, g_server_interface, g_client_mac, message, message_size, header);
+    log_info("Sending file name to client");
+    int send_result = send_package_until_ack(g_server_sock, g_server_interface, g_client_mac, message, message_size, header);
 
     // Clean up
     free(size_bin);
     free((void*) message); // only if generate_message() mallocs
     destroy_header(header);
+
+    return send_result;
 }
 
-void send_file_size(FILE* file){
+int send_file_size(FILE* file) {
     if (file == NULL) {
         log_err("File pointer is NULL");
-        return;
+        return 0;
     }
 
     fseek(file, 0, SEEK_END);
-    unsigned long file_size = ftell(file);
+    unsigned long long file_size = ftell(file);
     fseek(file, 0, SEEK_SET);
 
-    unsigned char size_bin[SIZE_SIZE];
-    memcpy(size_bin, convert_decimal_to_binary(file_size, SIZE_SIZE), SIZE_SIZE);
+    // Determine minimum number of bytes to encode file_size
+    int data_len = 0;
+    unsigned long long temp = file_size;
+    do {
+        data_len++;
+        temp >>= 8;
+    } while (temp > 0);
 
-    kermit_protocol_header* header = create_header(size_bin, (unsigned char*) SIZE, NULL);
+    if (data_len > 127) {
+        log_err("File size too large to encode in protocol (max 127 bytes)");
+        return 0;
+    }
+
+    unsigned char data[127];
+    for (int i = 0; i < data_len; i++) {
+        data[data_len - 1 - i] = (file_size >> (8 * i)) & 0xFF; // big-endian
+    }
+
+    // Convert data_len to 7-bit ASCII binary string for size field
+    unsigned char size_field[SIZE_SIZE];
+    memcpy(size_field, convert_decimal_to_binary(data_len, SIZE_SIZE), SIZE_SIZE);
+
+    kermit_protocol_header* header = create_header(size_field, (unsigned char*) SIZE, data);
     if (header == NULL) {
-        log_err( "Failed to create header for file size");
-        return;
+        log_err("Failed to create header for file size");
+        return 0;
     }
 
     const unsigned char* message = generate_message(header);
     unsigned int message_size = getHeaderSize(header);
 
-    log("Sending file size to client");
-    send_package(g_server_sock, g_server_interface, g_client_mac, message, message_size);
+    log_info("Sending file size (%llu bytes) to client", file_size);
+    int send_result = send_package_until_ack(g_server_sock, g_server_interface, g_client_mac, message, message_size, header);
 
     destroy_header(header);
+    return send_result;
 }
 
 void send_end_of_file(){
@@ -309,6 +349,7 @@ void send_end_of_file(){
 }
 
 void send_file_packages(char* filename, unsigned char* type){
+    log_info("Starting to send data over to client\n");
     if (filename == NULL || type == NULL) {
         log_err("Filename or type is NULL");
         return;
@@ -322,8 +363,16 @@ void send_file_packages(char* filename, unsigned char* type){
 
     char* f_name = strrchr(filename, '/');
     if (f_name) f_name++;
-    send_filename(f_name, type);
-    send_file_size(file);
+
+    if(send_filename(f_name, type) == 2){
+        log_err("Failed to send file name");
+        return;
+    }
+
+    if(send_file_size(file) == 2){
+        log_err("Failed to send file size");
+        return;
+    }
 
     unsigned char data[MAX_DATA_SIZE];
     size_t bytes_read;

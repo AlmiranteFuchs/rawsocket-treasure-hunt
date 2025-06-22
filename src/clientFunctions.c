@@ -192,9 +192,6 @@ void listen_to_server(int sock, char* interface, unsigned char server_mac[6], ch
 
         while ((temp = get_first_in_line_receive_buffer()) != NULL) {
             process_message(temp);
-            sleep(1);
-            log("Sending ACK\n");
-            send_ack_or_nack(sock, interface, server_mac, temp, ACK);
             destroy_header(temp);
         }
     }
@@ -258,16 +255,17 @@ void move_down(char** grid, Position* pos){
     print_grid(grid);
 }
 
-void read_to_file(kermit_protocol_header* header){
+int read_to_file(kermit_protocol_header* header){
     if (curr == NULL) {
         log_err( "No file is currently open to write data to.\n");
-        return;
+        return 0;
     }
 
     unsigned int size = convert_binary_to_decimal(header->size, SIZE_SIZE);
     fwrite(header->data, sizeof(unsigned char), size, curr);
     fflush(curr);
     log_v("Wrote %u bytes to file.\n", size);
+    return 1;
 }
 
 /*
@@ -275,16 +273,17 @@ void read_to_file(kermit_protocol_header* header){
     1 - Video
     2 - Image
 */
-void create_file(kermit_protocol_header* header){
+int create_file(kermit_protocol_header* header){
     // create new file with its title and extension
     log_info("Creating file: %s", header->data);
 
     FILE* file = fopen((const char*) header->data, "w+");
     if (!file){
-        return;
+        return 0;
     }
 
     curr = file;
+    return 1;
 }
 
 void process_message(kermit_protocol_header* header) {
@@ -297,8 +296,15 @@ void process_message(kermit_protocol_header* header) {
                 case 6: {
                     // Texto + ack + nome
                     log_info("# Starting to receive Text data");
-                    create_file(header);
-                    state = STATE_DATA_TRANSFER;
+                    if(create_file(header)){
+                        log("Sending ACK\n");
+                        send_ack_or_nack(g_sock, g_interface, g_server_mac, header, ACK);
+                        state = STATE_DATA_TRANSFER;
+                    }else{
+                        log_err("Could not create file");
+                        send_ack_or_nack(g_sock, g_interface, g_server_mac, header, ERROR);
+                    }
+                    
                     break;
                 }
                 case 7: {
@@ -327,15 +333,31 @@ void process_message(kermit_protocol_header* header) {
             switch (type) {
                 case 4: {
                     // Tamanho do arquivo
-                    int size = convert_binary_to_decimal(header->size, SIZE_SIZE);
-                    log_v("File size received: %u\n", size);
-                    curr_tam = size;
+                    int data_len = convert_binary_to_decimal(header->size, SIZE_SIZE);
+                    if (data_len <= 0 || data_len > 127) {
+                        log_err("Invalid data length in size field: %d", data_len);
+                        return;
+                    }
+
+                    unsigned long long file_size = 0;
+                    for (int i = 0; i < data_len; i++) {
+                        file_size = (file_size << 8) | header->data[i];
+                    }
+
+                    log_info("File size received: %llu\n", file_size);
+                    curr_tam = file_size;
+                    send_ack_or_nack(g_sock, g_interface, g_server_mac, header, ACK);
+
                     break;
                 }
                 case 5: {
                     // Dados do arquivo
                     log_info("File data received for seq: #%u", convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE));
-                    read_to_file(header);
+                    if(read_to_file(header)){
+                        send_ack_or_nack(g_sock, g_interface, g_server_mac, header, ACK);
+                    }else{
+                        send_ack_or_nack(g_sock, g_interface, g_server_mac, header, ERROR);
+                    }
                     break;
                 }
                 case 9: {
@@ -348,6 +370,7 @@ void process_message(kermit_protocol_header* header) {
                     curr_tam = 0;
                     expected_sequence_local = 0;
                     state = STATE_PLAYING;
+                    send_ack_or_nack(g_sock, g_interface, g_server_mac, header, ACK);
                     break;
                 }
                 case 15: {
@@ -377,15 +400,15 @@ void client(){
     // Initializes receive buffer
     initialize_receive_buffer();
 
-    // Runs Game logic
-    print_grid(grid);
-
     int input;
     while (1){
         input = getch_timeout(100000); // 100ms
 
         // If server has anything to say, if there's not, we go back to the game ( timeout )
         listen_to_server(g_sock, g_interface, g_server_mac, grid, player_pos);
+
+        // Runs Game logic
+        print_grid(grid);
 
         if (input == 'q') break;
         if (input == -1) continue; // timeout de input, volta para o loop
