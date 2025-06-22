@@ -24,6 +24,6 @@ char** initialize_grid(Position* player_pos);
 void destroy_grid(char** grid);
 void destroy_player(Position* player_pos);
 void print_grid(char** grid);
-void move_player(char** grid, Position* player_pos, char direction);
+int move_player(char** grid, Position* player_pos, char direction);
 
 #endif

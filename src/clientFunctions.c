@@ -52,12 +52,123 @@ int getch_timeout(int usec_timeout) {
     return ch;
 }
 
-void listen_to_server(int sock, char* interface, unsigned char server_mac[6], char** grid, Position* player_pos) {
+void receive_and_buffer_packet() {
     unsigned char buffer[4096];
     struct sockaddr_ll sender_addr;
     socklen_t addr_len = sizeof(sender_addr);
-    kermit_protocol_header* header = NULL;
 
+    // // Packet Processing
+    // Builds packet
+    receive_package(g_sock, buffer, &sender_addr, &addr_len);
+    kermit_protocol_header* header = read_bytes_into_header(buffer);
+    if (header == NULL) return;
+
+    //  Duplicate validation
+    if (last_header && check_if_same(header, last_header)) {
+      log_v("Received duplicate header, ignoring...");
+      destroy_header(header);
+      return;
+    }
+    if (is_header_on_receive_buffer(header)) {
+      log("Filtered as already in buffer: ");
+      destroy_header(header);
+      return;
+    }
+
+    if (!checksum_if_valid(header)) {
+      log_err("Received packet with checksum error");
+
+      log("Sending NACK for seq: #%d",
+      convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE));
+      send_ack_or_nack(g_sock, g_interface, g_server_mac, header, NAK);
+
+      destroy_header(header);
+      return;
+    }
+
+    update_receive_buffer(header);
+    copy_header_deep(&last_header, header);
+}
+
+// This wait for ack is only for movement, client doenst wait for more things
+// from server, so it doesnt need to be waiting for ack
+// As the movement state is difficult to track as we dont have a get player pos
+// Or another source of truth and the server can lose the ACK_OK sent
+// And we cant wait for ack of an ack_ok of an movement
+unsigned int wait_for_ack_ok(kermit_protocol_header *sent_header) {
+    while (1) {
+      fd_set readfds;
+      struct timeval tv;
+      FD_ZERO(&readfds);
+      FD_SET(g_sock, &readfds);
+      tv.tv_sec = 0;
+      tv.tv_usec = 1000000; // 1000ms
+  
+      int retval = select(g_sock + 1, &readfds, NULL, NULL, &tv);
+      if (retval == -1) {
+        perror("select()");
+        return 0;
+      } else if (retval == 0) {
+          log_info("Timeout waiting for ACK/NACK");
+        return 0;
+      }
+  
+      receive_and_buffer_packet(); // Update buffer
+      kermit_protocol_header *response = get_first_in_line_receive_buffer();
+  
+      if (response == NULL)
+        continue; // Try again
+  
+      // Check if ACK/NACK and if matches the sequence
+      if (strncmp((char*)response->type, OK_ACK, TYPE_SIZE) == 0) {
+          if (memcmp(response->sequence, sent_header->sequence, SEQUENCE_SIZE) == 0) {
+              destroy_header(response);
+              return 1;
+          }
+      } else if (strncmp((char*)response->type, ERROR, TYPE_SIZE) == 0) {
+          if (memcmp(response->sequence, sent_header->sequence, SEQUENCE_SIZE) == 0) {
+              log_info("Received ERROR for move request, invalid position");
+              destroy_header(response);
+              return 2;
+          }
+      }
+  
+      destroy_header(
+          response); // If not the one we want, discard and keep waiting
+    }
+  
+    return 0; // fallback
+  }
+
+int send_move_package_until_ack_ok(int sock, char* interface, unsigned char* mac, 
+    const unsigned char* message, size_t message_size, 
+    kermit_protocol_header* header) {
+
+    int result = -1;
+    int attempt = 0;
+    do {
+        if (attempt > 0) {
+            unsigned int seq = convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE);
+            log_info("Resending package #%d, attempt #%d",seq, attempt);
+        }
+        send_package(sock, interface, mac, message, message_size);
+        attempt++;
+
+        result = wait_for_ack_ok(header);
+    } while (result == 0);
+    
+    if(result == 1){
+        log("Movement success");
+    }else if(result == 2){
+        log("Invalid movement");
+    }else{
+        log_err("Invalid return for movement request");
+    }
+
+    return result;
+}
+
+void listen_to_server(int sock, char* interface, unsigned char server_mac[6], char** grid, Position* player_pos) {
     while (1) {
         fd_set readfds;
         struct timeval tv;
@@ -75,39 +186,8 @@ void listen_to_server(int sock, char* interface, unsigned char server_mac[6], ch
             break;
         }
         
-         // // Packet Processing
-        // Builds packet
-        receive_package(sock, buffer, &sender_addr, &addr_len);
-        header = read_bytes_into_header(buffer);
-        if (header == NULL) {
-            log_err("Failed to read header");
-            continue;
-        }
-
-        //  Duplicate validation
-        if (last_header && check_if_same(header, last_header)) {
-            log_v("Received duplicate header, ignoring...");
-            destroy_header(header);
-            continue;
-        }
-        if (is_header_on_receive_buffer(header)) {
-            log("Filtered as already in buffer: ");
-            destroy_header(header);
-            continue;
-        }
-
-        if (!checksum_if_valid(header)){
-            log_err("Received packet with checksum error");
-
-            log("Sending NACK for seq: #%d", convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE));
-            send_ack_or_nack(sock, interface, server_mac, header, NAK);
-
-            destroy_header(header);
-            continue;
-        }
+        receive_and_buffer_packet();
         
-        update_receive_buffer(header);
-        copy_header_deep(&last_header, header);
         kermit_protocol_header* temp;
 
         while ((temp = get_first_in_line_receive_buffer()) != NULL) {
@@ -120,9 +200,8 @@ void listen_to_server(int sock, char* interface, unsigned char server_mac[6], ch
     }
 }
 
-kermit_protocol_header* move(unsigned char* direction){
+int move(unsigned char* direction){
     unsigned char size[SIZE_SIZE] = "0000000";
-    // unsigned char sequence[SEQUENCE_SIZE] = "00000";
     unsigned char type[TYPE_SIZE];
     memcpy(type, direction, TYPE_SIZE);
     unsigned char* data = NULL;
@@ -132,48 +211,51 @@ kermit_protocol_header* move(unsigned char* direction){
     kermit_protocol_header* header = create_header(size, type, data);
     if (header == NULL) {
         log_err( "Failed to create header\n");
-        return NULL;
+        return 0;
     }
 
     const unsigned char* generatedM = generate_message(header);
     unsigned int sizeMessage = getHeaderSize(header);
 
-    send_package(g_sock, g_interface, g_server_mac, generatedM, sizeMessage);
+    log_info("Sending move request");
+    int result = send_move_package_until_ack_ok(g_sock, g_interface, g_server_mac, generatedM, sizeMessage, header);
 
     free((void*) generatedM);
-    return header;
+    free(header);
+
+    return result;
 }
 
-kermit_protocol_header* move_left(char** grid, Position* pos){
+void move_left(char** grid, Position* pos){
     unsigned char direction[TYPE_SIZE] = LEFT;
-    kermit_protocol_header* header = move(direction);
-    move_player(grid, pos, '2');
+    int result = move(direction);
+    if(result == 1)
+        move_player(grid, pos, '2');
     print_grid(grid);
-    return header;
 }
 
-kermit_protocol_header* move_right(char** grid, Position* pos){
+void move_right(char** grid, Position* pos){
     unsigned char direction[TYPE_SIZE] = RIGHT;
-    kermit_protocol_header* header = move(direction);
-    move_player(grid, pos, '3');
+    int result = move(direction);
+    if(result == 1)
+        move_player(grid, pos, '3');
     print_grid(grid);
-    return header;
 }
 
-kermit_protocol_header* move_up(char** grid, Position* pos){
+void move_up(char** grid, Position* pos){
     unsigned char direction[TYPE_SIZE] = UP;
-    kermit_protocol_header* header = move(direction);
-    move_player(grid, pos, '0');
+    int result = move(direction);
+    if(result == 1)
+        move_player(grid, pos, '0');
     print_grid(grid);
-    return header;
 }
 
-kermit_protocol_header* move_down(char** grid, Position* pos){
+void move_down(char** grid, Position* pos){
     unsigned char direction[TYPE_SIZE] = DOWN;
-    kermit_protocol_header* header = move(direction);
-    move_player(grid, pos, '1');
+    int result = move(direction);
+    if(result == 1)
+        move_player(grid, pos, '1');
     print_grid(grid);
-    return header;
 }
 
 void read_to_file(kermit_protocol_header* header){
@@ -214,27 +296,27 @@ void process_message(kermit_protocol_header* header) {
             switch (type) {
                 case 6: {
                     // Texto + ack + nome
-                    log_info("Starting to receive Text data");
+                    log_info("# Starting to receive Text data");
                     create_file(header);
                     state = STATE_DATA_TRANSFER;
                     break;
                 }
                 case 7: {
                     // Vídeo + ack + nome (TODO)
-                    log_info("Starting to receive Video data");
+                    log_info("# Starting to receive Video data");
                     // create_file(header);
                     // state = STATE_DATA_TRANSFER;
                     break;
                 }
                 case 8: {
                     // Imagem + ack + nome (TODO)
-                    log_info("Starting to receive image data");
+                    log_info("# Starting to receive image data");
                     // create_file(header);
                     // state = STATE_DATA_TRANSFER;
                     break;
                 }
                 default: {
-                    log_err("Unknown message type (PLAYING): %u\n", type);
+                    log_err("# Unknown message type (PLAYING): %u\n", type);
                     break;
                 }
             }
@@ -270,7 +352,7 @@ void process_message(kermit_protocol_header* header) {
                 }
                 case 15: {
                     // Erro
-                    log_info("Received error message.\n");
+                    log_err("Received error message.\n");
                     break;
                 }
                 default: {

@@ -79,7 +79,7 @@ void print_grid(char** grid) {
     }
 }
 
-void move_player(char** grid, Position* player_pos, char direction) {
+int move_player(char** grid, Position* player_pos, char direction) {
     int new_x = player_pos->x;
     int new_y = player_pos->y;
 
@@ -97,22 +97,25 @@ void move_player(char** grid, Position* player_pos, char direction) {
             new_y++;
             break;
         default:
-            return; 
+            return 0; 
     }
 
-    if (grid[new_x][new_y] != WALL) {
-        if (grid[new_x][new_y] == EVENT) {
-            log_v("Found a treasure!\n");
-        } 
-        else {
-            grid[player_pos->x][player_pos->y] = FOUND; 
-            grid[new_x][new_y] = PLAYER;
-        }
-
-        player_pos->x = new_x;
-        player_pos->y = new_y;
-
+    
+    if (grid[new_x][new_y] == WALL) {
+        return 0; // Invalid move: wall
     }
 
-    log_info(" - player_pos: %d %d - ", new_x, new_y);
+    if (grid[new_x][new_y] == EVENT) {
+        log_info("# # Found a treasure!");
+    }else{
+        grid[player_pos->x][player_pos->y] = FOUND;
+        grid[new_x][new_y] = PLAYER;
+    }
+
+    player_pos->x = new_x;
+    player_pos->y = new_y;
+
+    log_info("# # Player on: %d %d", new_x, new_y);
+
+    return 1; // Valid move
 }

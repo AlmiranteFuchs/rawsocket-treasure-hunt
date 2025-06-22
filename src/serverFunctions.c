@@ -74,7 +74,6 @@ void send_package_until_ack(int sock, char* interface, unsigned char* mac,
         attempt++;
     } while (wait_for_ack_or_nack(header) == 0);
     log("ACK OK\n");
-    
 }
 
 void receive_and_buffer_packet() {
@@ -96,12 +95,23 @@ void receive_and_buffer_packet() {
         return;
     }
 
+    if (!checksum_if_valid(header)) {
+        log_err("Received packet with checksum error");
+  
+        log("Sending NACK for seq: #%d",
+        convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE));
+        send_ack_or_nack(g_server_sock, g_server_interface, g_client_mac, header, NAK);
+  
+        destroy_header(header);
+        return;
+      }
+
     update_receive_buffer(header);
     copy_header_deep(&last_header, header);
 }
 
 void listen_server(Treasure** treasures, Position* player_pos, char** grid){
-    log_info("Server waiting for packets on loopback...");
+    log_info("\nServer waiting for packets on loopback...\n");
     while (1) {
         receive_and_buffer_packet();
 
@@ -184,7 +194,16 @@ void process_message(kermit_protocol_header* header, char** grid, Position* play
             break;
     }
 
-    move_player(grid, player_pos, move_type);
+    // If this ack ok or error fails the server unsyncs and client is stuck in waiting ;c
+    if(move_player(grid, player_pos, move_type)){
+        log("Valid player movement, sending ACK OK");
+        send_ack_or_nack(g_server_sock, g_server_interface, g_client_mac, header, OK_ACK);
+    }else{
+        log("Invalid player movement, sending ERROR");
+        send_ack_or_nack(g_server_sock, g_server_interface, g_client_mac, header, ERROR);
+        return;
+    }
+
     char* file_name;
 
     if (!isPlayerOnTreasure(grid, player_pos))
