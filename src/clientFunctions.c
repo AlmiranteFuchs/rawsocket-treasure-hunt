@@ -2,6 +2,7 @@
 #include "log.h"
 #include "socket.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 // --- Globals for socket communication ---
@@ -10,12 +11,16 @@ char* g_interface = NULL;
 unsigned char g_server_mac[6];
 // --- -------------------------------- ---
 
+// --- Globals for Header Management ---
 extern kermit_protocol_header* last_header;
 extern kermit_protocol_header** global_receive_buffer;
+// --- -------------------------------- ---
 
+// --- Globals for File Management ---
 FILE* curr = NULL;
 unsigned int curr_tam = 0;
-unsigned int expected_sequence_local = 0;
+char curr_filename[256] = {0};
+// --- -------------------------------- ---
 
 // States of the client
 typedef enum {
@@ -273,16 +278,21 @@ int read_to_file(kermit_protocol_header* header){
     1 - Video
     2 - Image
 */
-int create_file(kermit_protocol_header* header){
+int create_file(kermit_protocol_header* header) {
     // create new file with its title and extension
     log_info("Creating file: %s", header->data);
 
     FILE* file = fopen((const char*) header->data, "w+");
-    if (!file){
+    if (!file) {
         return 0;
     }
 
     curr = file;
+
+    // Save filename globally
+    strncpy(curr_filename, (const char*) header->data, sizeof(curr_filename) - 1);
+    curr_filename[sizeof(curr_filename) - 1] = '\0';  // ensure null-termination
+
     return 1;
 }
 
@@ -368,9 +378,16 @@ void process_message(kermit_protocol_header* header) {
                         curr = NULL;
                     }
                     curr_tam = 0;
-                    expected_sequence_local = 0;
                     state = STATE_PLAYING;
                     send_ack_or_nack(g_sock, g_interface, g_server_mac, header, ACK);
+
+                    // Open file
+                    if (strlen(curr_filename) > 0) {
+                        char cmd[512];
+                        snprintf(cmd, sizeof(cmd), "xdg-open \"%s\" &", curr_filename);
+                        system(cmd);
+                        exit(1);
+                    }
                     break;
                 }
                 case 15: {
