@@ -10,6 +10,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>      
+#include <sys/ioctl.h>
+
+#include <netinet/in.h>
+#include <unistd.h>
 
 #define DEFAULT_PORT 8080
 #define START "01111110"
@@ -60,6 +64,8 @@ void connect_raw_socket(int sock, char* interface, unsigned char address[6]);
 void send_package(int sock, char* interface, unsigned char dest_mac[6], const unsigned char* message, size_t message_len);
 void send_ack_or_nack(int sock, char* interface, unsigned char server_mac[6], kermit_protocol_header* received, const char* type_str);
 void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender_addr, socklen_t* addr_len);
+
+int get_mac_address(int sock, const char* ifname, unsigned char* mac);
 
 kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned char type[TYPE_SIZE], unsigned char* data);
 kermit_protocol_header* create_ack_or_nack_header(kermit_protocol_header* original, const char* type_str);

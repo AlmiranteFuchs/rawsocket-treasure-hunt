@@ -8,6 +8,7 @@
 // --- Globals for socket communication ---
 int g_sock = -1;
 char* g_interface = NULL;
+unsigned char self_mac[6];
 unsigned char g_server_mac[6];
 // --- -------------------------------- ---
 
@@ -451,10 +452,10 @@ void client(){
     }
 }
 
-void initialize_connection_context(char* interface, unsigned char server_mac[6], int port) {
+void initialize_connection_context(char* interface, int port) {
     g_sock = create_raw_socket();
     bind_raw_socket(g_sock, interface, port);
 
-    g_interface = interface;
-    memcpy(g_server_mac, server_mac, 6);
+    // g_interface = interface;
+    // memcpy(g_server_mac, server_mac, 6);
 }

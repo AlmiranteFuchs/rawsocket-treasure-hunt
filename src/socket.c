@@ -153,6 +153,21 @@ void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender
     log_v("Received %zd bytes\n", bytes);
 }
 
+int get_mac_address(int sock, const char* ifname, unsigned char* mac){
+    struct ifreq ifr;
+
+    memset(&ifr, 0, sizeof(ifr));
+    strncpy(ifr.ifr_name, ifname, IFNAMSIZ - 1);
+
+    if (ioctl(sock, SIOCGIFHWADDR, &ifr) == -1) {
+        perror("ioctl failed");
+        return -1;
+    }
+
+    memcpy(mac, ifr.ifr_hwaddr.sa_data, 6);
+    return 0;
+}
+
 kermit_protocol_header* create_ack_or_nack_header(kermit_protocol_header* original, const char* type_str) {
     if (original == NULL || type_str == NULL)
         return NULL;

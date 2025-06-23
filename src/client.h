@@ -7,7 +7,7 @@
 #include <termios.h>
 
 // Initiates default client behaviour
-void initialize_connection_context(char* interface, unsigned char server_mac[6], int port);
+void initialize_connection_context(char* interface, int port);
 void client();
 
 int move(unsigned char* direction);

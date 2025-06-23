@@ -8,6 +8,7 @@
 // --- Globals for socket communication ---
 int g_server_sock = -1;
 char* g_server_interface = NULL;
+unsigned char self_mac[6];
 unsigned char g_client_mac[6];
 // --- -------------------------------- ---
 
@@ -139,6 +140,15 @@ void listen_server(Treasure** treasures, Position* player_pos, char** grid){
             destroy_header(temp);
         }
     }
+}
+
+char* obtain_client_mac(char* interface){
+    // Will loop and send broadcast messages until the client responds and then stabilish a handshake
+    char broadcast_mac[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}; 
+    // while (1) {
+    //     send_broadcast_message();
+    // }
+    return NULL;
 }
 
 char** initialize_server_grid(Position* player_pos, Treasure** treasures){
@@ -441,10 +451,14 @@ void server(){
     listen_server(treasures, player_pos, grid);
 }
 
-void initialize_connection_context(char* interface, unsigned char client_mac[6], int port) {
+void initialize_connection_context(char* interface, int port) {
     g_server_sock = create_raw_socket();
     bind_raw_socket(g_server_sock, interface, port);
 
-    g_server_interface = interface;
-    memcpy(g_client_mac, client_mac, 6);
+    get_mac_address(g_server_sock, interface, self_mac);
+
+    // obtain_client_mac(g_server_interface);
+
+    // g_server_interface = interface;
+    // memcpy(g_client_mac, client_mac, 6);
 }
