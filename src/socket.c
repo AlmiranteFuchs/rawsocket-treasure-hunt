@@ -204,19 +204,22 @@ kermit_protocol_header* create_ack_or_nack_header(kermit_protocol_header* origin
     memcpy(header->checksum, checksum, CHECKSUM_SIZE);
     free(checksum);
 
+    copy_header_deep(&global_header_buffer, header);
+
     return header;
 }
 
 kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned char type[TYPE_SIZE], unsigned char* data){
+    
     // Initializes header 
     kermit_protocol_header* header = (kermit_protocol_header*) malloc(sizeof(kermit_protocol_header));
     if (header == NULL)
-        return NULL;
-
+    return NULL;
+    
     memcpy(header->start, START, strlen(START));
     memcpy(header->size, size, SIZE_SIZE);
     memcpy(header->type, type, TYPE_SIZE);
-
+    
     // Creates data
     unsigned int data_size = convert_binary_to_decimal(size, SIZE_SIZE);
     if (data != NULL) {
@@ -227,7 +230,7 @@ kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned ch
     } else {
         header->data = NULL;
     }
-
+    
     // Manages global buffer
     if (global_header_buffer) {
         unsigned int seq = convert_binary_to_decimal(global_header_buffer->sequence, SEQUENCE_SIZE);
@@ -238,7 +241,7 @@ kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned ch
     } else {
         memset(header->sequence, '0', SEQUENCE_SIZE);
     }
-
+    
     // Calculates checksum
     unsigned char* checksum = calculate_checksum(
         header->size, SIZE_SIZE,           // ASCII binary
@@ -249,7 +252,7 @@ kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned ch
     
     memcpy(header->checksum, checksum, CHECKSUM_SIZE);
     free(checksum);
-
+    
     if (global_header_buffer == NULL) {
         global_header_buffer = (kermit_protocol_header*) malloc(sizeof(kermit_protocol_header));
         if (global_header_buffer == NULL) {
@@ -258,9 +261,9 @@ kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned ch
         }
         global_header_buffer->data = NULL;
     }
-
+    
     copy_header_deep(&global_header_buffer, header);
-
+    
     return header;
 }
 

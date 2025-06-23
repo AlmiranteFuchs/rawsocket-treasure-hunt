@@ -15,6 +15,7 @@ unsigned char g_server_mac[6];
 // --- Globals for Header Management ---
 extern kermit_protocol_header* last_header;
 extern kermit_protocol_header** global_receive_buffer;
+extern kermit_protocol_header* global_header_buffer;
 // --- -------------------------------- ---
 
 // --- Globals for File Management ---
@@ -48,16 +49,15 @@ int getch_timeout(int usec_timeout) {
 
     tv.tv_sec = 0;
     tv.tv_usec = usec_timeout;
-
+    
     int retval = select(STDIN_FILENO + 1, &readfds, NULL, NULL, &tv);
     if (retval > 0 && FD_ISSET(STDIN_FILENO, &readfds)) {
         ch = getchar();
     }
-
+    
     tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
     return ch;
 }
-
 void receive_and_buffer_packet() {
     unsigned char buffer[4096];
     struct sockaddr_ll sender_addr;
@@ -71,7 +71,13 @@ void receive_and_buffer_packet() {
 
     //  Duplicate validation
     if (last_header && check_if_same(header, last_header)) {
-      log_v("Received duplicate header, ignoring...");
+      log_v("Received duplicate header, re-sending the last packet...");
+      if (global_header_buffer) {
+        char* message = generate_message(global_header_buffer);
+        unsigned int message_size = getHeaderSize(global_header_buffer);
+        send_package(g_sock, g_interface, g_server_mac, (const unsigned char*) message, message_size);
+        free((void*) message);
+      }
       destroy_header(header);
       return;
     }
@@ -95,6 +101,91 @@ void receive_and_buffer_packet() {
     update_receive_buffer(header);
     copy_header_deep(&last_header, header);
 }
+
+int send_package_until_ack(int sock, char* interface, unsigned char* mac, 
+    const unsigned char* message, size_t message_size, 
+    kermit_protocol_header* header) {
+
+    int result = -1;
+    int attempt = 0;
+    do {
+        if (attempt > 20){
+            log_err("Too many attempts to send package, giving up");
+            return 0; 
+        }
+
+        if (attempt > 0) {
+            unsigned int seq = convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE);
+            log_info("Resending package #%d, attempt #%d",seq, attempt);
+        }
+        send_package(sock, interface, mac, message, message_size);
+        attempt++;
+
+        result = wait_for_ack_or_nack(header);
+    } while (result == 0);
+
+    if(result == 1){
+        log("ACK");
+    }else if(result == 2){
+        log("ACK ERROR");
+    }else{
+        log_err("Invalid return for movement request");
+    }
+    
+    return result;
+}
+
+unsigned int wait_for_ack_or_nack(kermit_protocol_header *sent_header) {
+  while (1) {
+    fd_set readfds;
+    struct timeval tv;
+    FD_ZERO(&readfds);
+    FD_SET(g_sock, &readfds);
+    tv.tv_sec = 0;
+    tv.tv_usec = 1000000; // 1000ms
+
+    int retval = select(g_sock + 1, &readfds, NULL, NULL, &tv);
+    if (retval == -1) {
+      perror("select()");
+      return 0;
+    } else if (retval == 0) {
+        log_info("Timeout waiting for ACK/NACK");
+      return 0;
+    }
+
+    receive_and_buffer_packet(); // Update buffer
+    kermit_protocol_header *response = get_first_in_line_receive_buffer();
+
+    if (response == NULL)
+      continue; // Try again
+
+    // Check if ACK/NACK and if matches the sequence
+    if (strncmp((char*)response->type, ACK, TYPE_SIZE) == 0) {
+        if (memcmp(response->sequence, sent_header->sequence, SEQUENCE_SIZE) == 0) {
+            destroy_header(response);
+            return 1;
+        }
+    } else if (strncmp((char*)response->type, NAK, TYPE_SIZE) == 0) {
+        if (memcmp(response->sequence, sent_header->sequence, SEQUENCE_SIZE) == 0) {
+            log_info("Received NACK for seq: #%d", convert_binary_to_decimal(response->sequence, SEQUENCE_SIZE));
+            destroy_header(response);
+            return 0;
+        }
+    } else if (strncmp((char*)response->type, ERROR, TYPE_SIZE) == 0) {
+        if (memcmp(response->sequence, sent_header->sequence, SEQUENCE_SIZE) == 0) {
+            log_info("Received ERROR for seq: #%d", convert_binary_to_decimal(response->sequence, SEQUENCE_SIZE));
+            destroy_header(response);
+            return 2;
+        }
+    }
+
+    destroy_header(
+        response); // If not the one we want, discard and keep waiting
+  }
+
+  return 0; // fallback
+}
+
 
 // This wait for ack is only for movement, client doenst wait for more things
 // from server, so it doesnt need to be waiting for ack
@@ -416,7 +507,7 @@ void client(){
     char** grid = initialize_grid(player_pos);
     
     // Initializes receive buffer
-    initialize_receive_buffer();
+    // initialize_receive_buffer();
 
     int input;
     while (1){
@@ -452,9 +543,79 @@ void client(){
     }
 }
 
+// kermit_protocol_header* send_ack_or_nack_until_response(const char* type, kermit_protocol_header* received){
+//     send_ack_or_nack(g_sock, g_interface, g_server_mac, received, type);
+
+//     while (1) {
+//         receive_and_buffer_packet();
+
+//         kermit_protocol_header* temp = get_first_in_line_receive_buffer();
+//         if (temp == NULL) {
+//             return NULL;
+//         }
+
+//         int tempSequence = convert_binary_to_decimal(temp->sequence, SEQUENCE_SIZE);
+//         int receivedSequence = convert_binary_to_decimal(received->sequence, SEQUENCE_SIZE);
+//         printf("Comparing sequences: temp=%d, received=%d\n", tempSequence, receivedSequence);
+
+//         if ((strncmp((char*)temp->sequence, (char*)received->sequence, SEQUENCE_SIZE) == 0)) {
+//             send_ack_or_nack(g_sock, g_interface, g_server_mac, received, type);
+//             destroy_header(temp);
+//             continue;
+//         }
+
+//         return temp;
+//     }
+// }
+
+void send_mac_address(){
+    /* Send client MAC as response */
+    kermit_protocol_header* header = create_header((unsigned char*)"0001010", (unsigned char*)MAC, self_mac);
+    char* message = (char*)generate_message(header);
+    unsigned int message_size = getHeaderSize(header);
+
+    if (send_package_until_ack(g_sock, g_interface, g_server_mac, (const unsigned char*)message, message_size, header) != 0) {
+        log_info("Client MAC sent successfully");
+    } else {
+        log_err("Failed to send client MAC");
+    }
+
+    free(message);
+    destroy_header(header);
+}
+
+void wait_process_broadcast_message(){
+    initialize_receive_buffer();
+
+    while (1) {
+        log_info("Waiting for MAC response from server...");
+
+        receive_and_buffer_packet();
+
+        kermit_protocol_header* temp = get_first_in_line_receive_buffer();
+        if (temp != NULL) {
+            if (strncmp((char*)temp->type, MAC, TYPE_SIZE) == 0) {
+                memcpy(g_server_mac, temp->data, 6);
+                log_info("Received MAC response");
+
+                send_ack_or_nack(g_sock, g_interface, g_server_mac, temp, ACK);
+                send_mac_address();
+
+                destroy_header(temp);
+                break; 
+            }
+
+            destroy_header(temp);
+        }
+    }
+}
+
 void initialize_connection_context(char* interface, int port) {
     g_sock = create_raw_socket();
     bind_raw_socket(g_sock, interface, port);
+
+    get_mac_address(g_sock, interface, self_mac);
+    wait_process_broadcast_message(); 
 
     // g_interface = interface;
     // memcpy(g_server_mac, server_mac, 6);

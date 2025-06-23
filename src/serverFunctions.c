@@ -8,13 +8,46 @@
 // --- Globals for socket communication ---
 int g_server_sock = -1;
 char* g_server_interface = NULL;
-unsigned char self_mac[6];
+unsigned char g_self_mac[6];
 unsigned char g_client_mac[6];
 // --- -------------------------------- ---
 
 extern kermit_protocol_header* global_header_buffer;
 extern kermit_protocol_header** global_receive_buffer;
 extern kermit_protocol_header* last_header;
+
+int send_package_until_ack(int sock, char* interface, unsigned char* mac, 
+    const unsigned char* message, size_t message_size, 
+    kermit_protocol_header* header) {
+
+    int result = -1;
+    int attempt = 0;
+    do {
+        if (attempt > 20){
+            log_err("Too many attempts to send package, giving up");
+            return 0; 
+        }
+
+        if (attempt > 0) {
+            unsigned int seq = convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE);
+            log_info("Resending package #%d, attempt #%d",seq, attempt);
+        }
+        send_package(sock, interface, mac, message, message_size);
+        attempt++;
+
+        result = wait_for_ack_or_nack(header);
+    } while (result == 0);
+
+    if(result == 1){
+        log("ACK");
+    }else if(result == 2){
+        log("ACK ERROR");
+    }else{
+        log_err("Invalid return for movement request");
+    }
+     
+    return result;
+}
 
 unsigned int wait_for_ack_or_nack(kermit_protocol_header *sent_header) {
   while (1) {
@@ -67,33 +100,8 @@ unsigned int wait_for_ack_or_nack(kermit_protocol_header *sent_header) {
   return 0; // fallback
 }
 
-int send_package_until_ack(int sock, char* interface, unsigned char* mac, 
-    const unsigned char* message, size_t message_size, 
-    kermit_protocol_header* header) {
 
-    int result = -1;
-    int attempt = 0;
-    do {
-        if (attempt > 0) {
-            unsigned int seq = convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE);
-            log_info("Resending package #%d, attempt #%d",seq, attempt);
-        }
-        send_package(sock, interface, mac, message, message_size);
-        attempt++;
 
-        result = wait_for_ack_or_nack(header);
-    } while (result == 0);
-
-    if(result == 1){
-        log("ACK");
-    }else if(result == 2){
-        log("ACK ERROR");
-    }else{
-        log_err("Invalid return for movement request");
-    }
-     
-    return result;
-}
 
 void receive_and_buffer_packet() {
     unsigned char buffer[4096];
@@ -144,10 +152,39 @@ void listen_server(Treasure** treasures, Position* player_pos, char** grid){
 
 char* obtain_client_mac(char* interface){
     // Will loop and send broadcast messages until the client responds and then stabilish a handshake
-    char broadcast_mac[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff}; 
-    // while (1) {
-    //     send_broadcast_message();
-    // }
+    initialize_receive_buffer();
+
+    unsigned char broadcast_mac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+    kermit_protocol_header* header = create_header((unsigned char*) "0001010", (unsigned char*) MAC, g_self_mac);
+    char* message = generate_message(header);
+    unsigned int message_size = getHeaderSize(header);
+
+    log_info("Sending broadcast message to obtain client MAC");
+    if (send_package_until_ack(g_server_sock, g_server_interface, broadcast_mac,
+        (const unsigned char*) message, message_size, header) == 1) {
+        log_info("Broadcast message sent successfully");
+    }
+
+    while (1) {
+        log_info("Waiting for MAC response from client...");
+
+        receive_and_buffer_packet();
+
+        kermit_protocol_header* temp = get_first_in_line_receive_buffer();
+        if (temp != NULL) {
+            if (strncmp((char*)temp->type, MAC, TYPE_SIZE) == 0) {
+                memcpy(g_client_mac, temp->data, 6);
+                log_info("Received MAC response");
+                send_ack_or_nack(g_server_sock, g_server_interface, g_client_mac, temp, ACK);
+                destroy_header(temp);
+
+                return (char*)g_client_mac;
+            }
+
+            destroy_header(temp);
+        }
+    }
+
     return NULL;
 }
 
@@ -446,7 +483,7 @@ void server(){
     
     char** grid = initialize_server_grid(player_pos, treasures);
     last_header = NULL;
-    initialize_receive_buffer();
+    // initialize_receive_buffer();
 
     listen_server(treasures, player_pos, grid);
 }
@@ -455,9 +492,8 @@ void initialize_connection_context(char* interface, int port) {
     g_server_sock = create_raw_socket();
     bind_raw_socket(g_server_sock, interface, port);
 
-    get_mac_address(g_server_sock, interface, self_mac);
-
-    // obtain_client_mac(g_server_interface);
+    get_mac_address(g_server_sock, interface, g_self_mac);
+    obtain_client_mac(g_server_interface);
 
     // g_server_interface = interface;
     // memcpy(g_client_mac, client_mac, 6);

@@ -32,6 +32,7 @@
 #define UP "1011"
 #define DOWN "1100"
 #define LEFT "1101"
+#define MAC "1110"
 #define ERROR "1111"
 
 // Error types
