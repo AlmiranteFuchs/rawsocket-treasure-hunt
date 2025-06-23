@@ -1,5 +1,5 @@
 #include "socket.h"
-#include "log.h"
+#include "log_msg.h"
 
 kermit_protocol_header* global_header_buffer = NULL;
 kermit_protocol_header* last_header = NULL;
@@ -140,7 +140,7 @@ void send_package(int sock, char* interface, unsigned char dest_mac[6], const un
         perror("send failed");
         exit(-1);
     }
-    log_v("Sent %zd bytes\n", sent);
+    log_msg_v("Sent %zd bytes\n", sent);
 }
 
 void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender_addr, socklen_t* addr_len){
@@ -150,7 +150,7 @@ void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender
         perror("recvfrom failed");
         exit(-1);
     }
-    log_v("Received %zd bytes\n", bytes);
+    log_msg_v("Received %zd bytes\n", bytes);
 }
 
 int get_mac_address(int sock, const char* ifname, unsigned char* mac){
@@ -207,6 +207,30 @@ kermit_protocol_header* create_ack_or_nack_header(kermit_protocol_header* origin
     copy_header_deep(&global_header_buffer, header);
 
     return header;
+}
+
+void send_error(int sock, char* interface, char* to_mac, char* error_message) {
+    unsigned char size[SIZE_SIZE] = "0000000";
+    unsigned char type[TYPE_SIZE];
+    memcpy(type, ERROR, TYPE_SIZE);
+    unsigned char* data = (unsigned char*) error_message;
+
+    log_msg_v("Sending error message: %s\n", error_message);
+
+    kermit_protocol_header* header = create_header(size, type, data);
+    if (header == NULL) {
+        log_err("Failed to create header for error message\n");
+        return;
+    }
+
+    const unsigned char* generatedM = generate_message(header);
+    unsigned int sizeMessage = getHeaderSize(header);
+
+    log_info("Sending error message");
+    send_package(sock, interface, to_mac, generatedM, sizeMessage);
+
+    free((void*) generatedM);
+    free(header);
 }
 
 kermit_protocol_header* create_header(unsigned char size[SIZE_SIZE], unsigned char type[TYPE_SIZE], unsigned char* data){

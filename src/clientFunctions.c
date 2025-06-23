@@ -1,5 +1,4 @@
 #include "client.h"
-#include "log.h"
 #include "socket.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -71,7 +70,7 @@ void receive_and_buffer_packet() {
 
     //  Duplicate validation
     if (last_header && check_if_same(header, last_header)) {
-      log_v("Received duplicate header, re-sending the last packet...");
+      log_msg_v("Received duplicate header, re-sending the last packet...");
       if (global_header_buffer) {
         char* message = generate_message(global_header_buffer);
         unsigned int message_size = getHeaderSize(global_header_buffer);
@@ -82,7 +81,7 @@ void receive_and_buffer_packet() {
       return;
     }
     if (is_header_on_receive_buffer(header)) {
-      log("Filtered as already in buffer: ");
+      log_msg("Filtered as already in buffer: ");
       destroy_header(header);
       return;
     }
@@ -90,7 +89,7 @@ void receive_and_buffer_packet() {
     if (!checksum_if_valid(header)) {
       log_err("Received packet with checksum error");
 
-      log("Sending NACK for seq: #%d",
+      log_msg("Sending NACK for seq: #%d",
       convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE));
       send_ack_or_nack(g_sock, g_interface, g_server_mac, header, NAK);
 
@@ -125,9 +124,9 @@ int send_package_until_ack(int sock, char* interface, unsigned char* mac,
     } while (result == 0);
 
     if(result == 1){
-        log("ACK");
+        log_msg("ACK");
     }else if(result == 2){
-        log("ACK ERROR");
+        log_msg("ACK ERROR");
     }else{
         log_err("Invalid return for movement request");
     }
@@ -255,9 +254,9 @@ int send_move_package_until_ack_ok(int sock, char* interface, unsigned char* mac
     } while (result == 0);
     
     if(result == 1){
-        log("Movement success");
+        log_msg("Movement success");
     }else if(result == 2){
-        log("Invalid movement");
+        log_msg("Invalid movement");
     }else{
         log_err("Invalid return for movement request");
     }
@@ -300,7 +299,7 @@ int move(unsigned char* direction){
     memcpy(type, direction, TYPE_SIZE);
     unsigned char* data = NULL;
 
-    log_v("Sending move command\n");
+    log_msg_v("Sending move command\n");
 
     kermit_protocol_header* header = create_header(size, type, data);
     if (header == NULL) {
@@ -362,7 +361,7 @@ int read_to_file(kermit_protocol_header* header){
     unsigned int size = convert_binary_to_decimal(header->size, SIZE_SIZE);
     fwrite(header->data, sizeof(unsigned char), size, curr);
     fflush(curr);
-    log_v("Wrote %u bytes to file.\n", size);
+    log_msg_v("Wrote %u bytes to file.\n", size);
     return 1;
 }
 
@@ -389,6 +388,16 @@ int create_file(kermit_protocol_header* header) {
     return 1;
 }
 
+unsigned long get_free_disk_space(const char* path, unsigned long* blockSize) {
+    struct statvfs stat;
+    if (statvfs(path, &stat) != 0) {
+        perror("statvfs failed");
+        return 0;
+    }
+    *blockSize = stat.f_bsize;
+    return stat.f_bsize * stat.f_bavail;
+}
+
 void process_message(kermit_protocol_header* header) {
     unsigned int type = convert_binary_to_decimal(header->type, TYPE_SIZE);
 
@@ -400,7 +409,7 @@ void process_message(kermit_protocol_header* header) {
                     // Texto + ack + nome
                     log_info("# Starting to receive Text data");
                     if(create_file(header)){
-                        log("Sending ACK\n");
+                        log_msg("Sending ACK\n");
                         send_ack_or_nack(g_sock, g_interface, g_server_mac, header, ACK);
                         state = STATE_DATA_TRANSFER;
                     }else{
@@ -448,6 +457,15 @@ void process_message(kermit_protocol_header* header) {
                     }
 
                     log_info("File size received: %llu\n", file_size);
+                    unsigned long blockSize = 0;
+                    unsigned long free_space = get_free_disk_space(".", &blockSize);
+                    unsigned long real_file_size = ceil((double)file_size / blockSize) * blockSize;
+                    if (free_space < real_file_size) {
+                        log_err("Not enough disk space to receive file. Required: %lu, Available: %lu", real_file_size, free_space);
+                        send_error(g_sock, g_interface, (char*) g_server_mac, NO_SPACE);
+                        return;
+                    }
+
                     curr_tam = file_size;
                     send_ack_or_nack(g_sock, g_interface, g_server_mac, header, ACK);
 

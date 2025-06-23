@@ -17,11 +17,11 @@ all: $(TARGET_CLIENT) $(TARGET_SERVER)
 
 # Link client
 $(TARGET_CLIENT): $(CLIENT_OBJ)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lm
 
 # Link server
 $(TARGET_SERVER): $(SERVER_OBJ)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS) -lm
 
 # Compile source files to dist/ folder
 $(BUILD_DIR)/%.o: %.c | $(BUILD_DIR)

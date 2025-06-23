@@ -1,6 +1,7 @@
 #ifndef SOCKET_H
 #define SOCKET_H
 
+#include <math.h>
 #include <sys/socket.h>
 #include <net/ethernet.h>
 #include <linux/if_packet.h>
@@ -14,6 +15,7 @@
 
 #include <netinet/in.h>
 #include <unistd.h>
+#include <sys/statvfs.h>
 
 #define DEFAULT_PORT 8080
 #define START "01111110"
@@ -64,6 +66,7 @@ int bind_raw_socket(int sock, char* interface, int port);
 void connect_raw_socket(int sock, char* interface, unsigned char address[6]);
 void send_package(int sock, char* interface, unsigned char dest_mac[6], const unsigned char* message, size_t message_len);
 void send_ack_or_nack(int sock, char* interface, unsigned char server_mac[6], kermit_protocol_header* received, const char* type_str);
+void send_error(int sock, char* interface, char* to_mac, char* error_message);
 void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender_addr, socklen_t* addr_len);
 
 int get_mac_address(int sock, const char* ifname, unsigned char* mac);

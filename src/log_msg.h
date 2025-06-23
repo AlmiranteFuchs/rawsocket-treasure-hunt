@@ -18,22 +18,22 @@
 
 // DEBUG log (Blue), controlled by DEBUG flag
 #if DEBUG
-    #define log(fmt, ...) \
+    #define log_msg(fmt, ...) \
         fprintf(stderr, "\033[1;34m[DEBUG] \033[0m" fmt "\n", ##__VA_ARGS__)
 
     #if VERBOSE
-        #define log_v(fmt, ...) \
+        #define log_msg_v(fmt, ...) \
             fprintf(stderr, "\033[1;36m[DEBUG-V] \033[0m" fmt "\n", ##__VA_ARGS__)
     #else
-        #define log_v(fmt, ...) \
+        #define log_msg_v(fmt, ...) \
             do {} while (0)
     #endif
 
 #else
-    #define log(fmt, ...) \
+    #define log_msg(fmt, ...) \
         do {} while (0)
 
-    #define log_v(fmt, ...) \
+    #define log_msg_v(fmt, ...) \
         do {} while (0)
 #endif
 

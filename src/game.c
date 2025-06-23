@@ -1,5 +1,5 @@
 #include "game.h"
-#include "log.h"
+#include "log_msg.h"
 
 char** initialize_grid(Position* player_pos) {
     char** grid = (char**)malloc(GRID_SIZE * sizeof(char*));

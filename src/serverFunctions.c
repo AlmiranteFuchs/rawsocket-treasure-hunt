@@ -1,5 +1,4 @@
 #include "game.h"
-#include "log.h"
 #include "server.h"
 #include "socket.h"
 #include <stdio.h>
@@ -39,9 +38,9 @@ int send_package_until_ack(int sock, char* interface, unsigned char* mac,
     } while (result == 0);
 
     if(result == 1){
-        log("ACK");
+        log_msg("ACK");
     }else if(result == 2){
-        log("ACK ERROR");
+        log_msg("ACK ERROR");
     }else{
         log_err("Invalid return for movement request");
     }
@@ -125,7 +124,7 @@ void receive_and_buffer_packet() {
     if (!checksum_if_valid(header)) {
         log_err("Received packet with checksum error");
   
-        log("Sending NACK for seq: #%d",
+        log_msg("Sending NACK for seq: #%d",
         convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE));
         send_ack_or_nack(g_server_sock, g_server_interface, g_client_mac, header, NAK);
   
@@ -229,7 +228,7 @@ char** initialize_server_grid(Position* player_pos, Treasure** treasures){
 }
 
 unsigned int isPlayerOnTreasure(char** grid, Position* player_pos){
-    log_v("Grid[%d][%d]: %c", player_pos->x, player_pos->y, grid[player_pos->x][player_pos->y]);
+    log_msg_v("Grid[%d][%d]: %c", player_pos->x, player_pos->y, grid[player_pos->x][player_pos->y]);
     return (grid[player_pos->x][player_pos->y] == EVENT);
 }
 
@@ -261,11 +260,11 @@ void process_message(kermit_protocol_header* header, char** grid, Position* play
 
     // If this ack ok or error fails the server unsyncs and client is stuck in waiting ;c
     if(move_player(grid, player_pos, move_type)){
-        log("Valid player movement, sending ACK OK");
+        log_msg("Valid player movement, sending ACK OK");
         // send_ack_or_nack(g_server_sock, g_server_interface, g_client_mac, header, OK_ACK);
         send_ack_or_nack(g_server_sock, g_server_interface, g_client_mac, header, ACK);
     }else{
-        log("Invalid player movement, sending ERROR");
+        log_msg("Invalid player movement, sending ERROR");
         send_ack_or_nack(g_server_sock, g_server_interface, g_client_mac, header, ERROR);
         return;
     }
@@ -390,7 +389,7 @@ void send_end_of_file(){
     const unsigned char* message = generate_message(header);
     unsigned int message_size = getHeaderSize(header);
 
-    log("Sending end of file to client");
+    log_msg("Sending end of file to client");
     send_package_until_ack(g_server_sock, g_server_interface, g_client_mac, message, message_size, header);
 
     destroy_header(header);
@@ -400,6 +399,12 @@ void send_file_packages(char* filename, unsigned char* type){
     log_info("Starting to send data over to client\n");
     if (filename == NULL || type == NULL) {
         log_err("Filename or type is NULL");
+        return;
+    }
+
+    if (access(filename, F_OK) != 0 || access(filename, R_OK) != 0) {
+        log_err("File does not exist or is not readable: %s", filename);
+        send_error(g_server_sock, g_server_interface, (char*) g_client_mac, PERMISSION_DENIED);
         return;
     }
 
@@ -425,7 +430,7 @@ void send_file_packages(char* filename, unsigned char* type){
     unsigned char data[MAX_DATA_SIZE];
     size_t bytes_read;
 
-    log("Sending file data to client:");
+    log_msg("Sending file data to client:");
 
     for (int sequence = 0; (bytes_read = fread(data, 1, MAX_DATA_SIZE, file)) > 0; sequence++) {
         unsigned char size_bin[SIZE_SIZE];
