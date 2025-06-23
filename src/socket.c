@@ -227,7 +227,7 @@ void send_error(int sock, char* interface, char* to_mac, char* error_message) {
     unsigned int sizeMessage = getHeaderSize(header);
 
     log_info("Sending error message");
-    send_package(sock, interface, to_mac, generatedM, sizeMessage);
+    send_package(sock, interface, (unsigned char*) to_mac, generatedM, sizeMessage);
 
     free((void*) generatedM);
     free(header);

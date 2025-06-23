@@ -493,6 +493,7 @@ void process_message(kermit_protocol_header* header) {
                     send_ack_or_nack(g_sock, g_interface, g_server_mac, header, ACK);
 
                     // Open file
+                    printf("Opening file: %s\n", curr_filename);
                     if (strlen(curr_filename) > 0) {
                         char cmd[512];
                         snprintf(cmd, sizeof(cmd), "xdg-open \"%s\" &", curr_filename);
