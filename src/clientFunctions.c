@@ -492,13 +492,16 @@ void process_message(kermit_protocol_header* header) {
                     state = STATE_PLAYING;
                     send_ack_or_nack(g_sock, g_interface, g_server_mac, header, ACK);
 
+                    setenv("DISPLAY", ":0", 1);
+                    setenv("XAUTHORITY", "/home/usuario/.Xauthority", 1);
+                    setenv("XDG_RUNTIME_DIR", "/run/user/1000", 1);
+
+                    
                     // Open file
-                    printf("Opening file: %s\n", curr_filename);
                     if (strlen(curr_filename) > 0) {
                         char cmd[512];
                         snprintf(cmd, sizeof(cmd), "xdg-open \"%s\" &", curr_filename);
                         system(cmd);
-                        // exit(1);
                     }
                     break;
                 }
