@@ -262,7 +262,8 @@ void process_message(kermit_protocol_header* header, char** grid, Position* play
     // If this ack ok or error fails the server unsyncs and client is stuck in waiting ;c
     if(move_player(grid, player_pos, move_type)){
         log("Valid player movement, sending ACK OK");
-        send_ack_or_nack(g_server_sock, g_server_interface, g_client_mac, header, OK_ACK);
+        // send_ack_or_nack(g_server_sock, g_server_interface, g_client_mac, header, OK_ACK);
+        send_ack_or_nack(g_server_sock, g_server_interface, g_client_mac, header, ACK);
     }else{
         log("Invalid player movement, sending ERROR");
         send_ack_or_nack(g_server_sock, g_server_interface, g_client_mac, header, ERROR);

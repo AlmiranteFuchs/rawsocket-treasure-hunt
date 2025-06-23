@@ -312,7 +312,8 @@ int move(unsigned char* direction){
     unsigned int sizeMessage = getHeaderSize(header);
 
     log_info("Sending move request");
-    int result = send_move_package_until_ack_ok(g_sock, g_interface, g_server_mac, generatedM, sizeMessage, header);
+    // int result = send_move_package_until_ack_ok(g_sock, g_interface, g_server_mac, generatedM, sizeMessage, header);
+    int result = send_package_until_ack(g_sock, g_interface, g_server_mac, generatedM, sizeMessage, header);
 
     free((void*) generatedM);
     free(header);
@@ -478,7 +479,7 @@ void process_message(kermit_protocol_header* header) {
                         char cmd[512];
                         snprintf(cmd, sizeof(cmd), "xdg-open \"%s\" &", curr_filename);
                         system(cmd);
-                        exit(1);
+                        // exit(1);
                     }
                     break;
                 }
