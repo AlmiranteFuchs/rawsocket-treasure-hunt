@@ -92,8 +92,7 @@ unsigned int wait_for_ack_or_nack(kermit_protocol_header *sent_header) {
         }
     }
 
-    destroy_header(
-        response); // If not the one we want, discard and keep waiting
+    destroy_header(response); 
   }
 
   return 0; // fallback
@@ -357,7 +356,8 @@ int send_file_size(FILE* file) {
 
     // Convert data_len to 7-bit ASCII binary string for size field
     unsigned char size_field[SIZE_SIZE];
-    memcpy(size_field, convert_decimal_to_binary(data_len, SIZE_SIZE), SIZE_SIZE);
+    unsigned char* bin_size = convert_decimal_to_binary(data_len, SIZE_SIZE);
+    memcpy(size_field, bin_size, SIZE_SIZE);
 
     kermit_protocol_header* header = create_header(size_field, (unsigned char*) SIZE, data);
     if (header == NULL) {
@@ -372,6 +372,8 @@ int send_file_size(FILE* file) {
     int send_result = send_package_until_ack(g_server_sock, g_server_interface, g_client_mac, message, message_size, header);
 
     destroy_header(header);
+    free(bin_size);
+    free((void*) message); 
     return send_result;
 }
 
@@ -393,6 +395,7 @@ void send_end_of_file(){
     send_package_until_ack(g_server_sock, g_server_interface, g_client_mac, message, message_size, header);
 
     destroy_header(header);
+    free((void*) message); // only if generate_message() mallocs
 }
 
 void send_file_packages(char* filename, unsigned char* type){
@@ -436,7 +439,8 @@ void send_file_packages(char* filename, unsigned char* type){
         unsigned char size_bin[SIZE_SIZE];
 
         unsigned int size_decimal = (unsigned int) bytes_read;
-        memcpy(size_bin, convert_decimal_to_binary(size_decimal, SIZE_SIZE), SIZE_SIZE);
+        unsigned char* size_decimal_bin = convert_decimal_to_binary(size_decimal, SIZE_SIZE);
+        memcpy(size_bin, size_decimal_bin, SIZE_SIZE);
 
         kermit_protocol_header* header = create_header(size_bin, (unsigned char*) DATA, data);
         if (header == NULL) {
@@ -451,7 +455,9 @@ void send_file_packages(char* filename, unsigned char* type){
         log_info("Sending File data for seq: #%d", convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE));
         send_package_until_ack(g_server_sock, g_server_interface, g_client_mac, message, message_size, header);
 
+        free(size_decimal_bin);
         destroy_header(header);
+        free((void*) message);
     }
 
     send_end_of_file();

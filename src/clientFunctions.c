@@ -405,9 +405,11 @@ void process_message(kermit_protocol_header* header) {
         // --- Default game logic ---
         case STATE_PLAYING:
             switch (type) {
-                case 6: {
-                    // Texto + ack + nome
-                    log_info("# Starting to receive Text data");
+                case 6: {}
+                case 7: {}
+                case 8: {
+                    log_info("# Starting to receive data");
+                    log_msg_v("filename: %s\n", header->data);
                     if(create_file(header)){
                         log_msg("Sending ACK\n");
                         send_ack_or_nack(g_sock, g_interface, g_server_mac, header, ACK);
@@ -417,20 +419,6 @@ void process_message(kermit_protocol_header* header) {
                         send_ack_or_nack(g_sock, g_interface, g_server_mac, header, ERROR);
                     }
                     
-                    break;
-                }
-                case 7: {
-                    // Vídeo + ack + nome (TODO)
-                    log_info("# Starting to receive Video data");
-                    // create_file(header);
-                    // state = STATE_DATA_TRANSFER;
-                    break;
-                }
-                case 8: {
-                    // Imagem + ack + nome (TODO)
-                    log_info("# Starting to receive image data");
-                    // create_file(header);
-                    // state = STATE_DATA_TRANSFER;
                     break;
                 }
                 default: {
@@ -489,13 +477,7 @@ void process_message(kermit_protocol_header* header) {
                         curr = NULL;
                     }
                     curr_tam = 0;
-                    state = STATE_PLAYING;
                     send_ack_or_nack(g_sock, g_interface, g_server_mac, header, ACK);
-
-                    setenv("DISPLAY", ":0", 1);
-                    setenv("XAUTHORITY", "/home/usuario/.Xauthority", 1);
-                    setenv("XDG_RUNTIME_DIR", "/run/user/1000", 1);
-
                     
                     // Open file
                     if (strlen(curr_filename) > 0) {
@@ -503,6 +485,8 @@ void process_message(kermit_protocol_header* header) {
                         snprintf(cmd, sizeof(cmd), "xdg-open \"%s\" &", curr_filename);
                         system(cmd);
                     }
+
+                    state = STATE_PLAYING;
                     break;
                 }
                 case 15: {
