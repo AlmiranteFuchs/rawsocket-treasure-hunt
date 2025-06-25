@@ -19,6 +19,7 @@ void move_right(char** grid, Position* pos);
 void move_up(char** grid, Position* pos);
 void move_down(char** grid, Position* pos);
 
+void checkIfInTreasure(char** grid, Position* player_pos);
 void process_message(kermit_protocol_header* header);   // process server message
 void wait_process_broadcast_message(); 
 

@@ -203,7 +203,8 @@ char** initialize_server_grid(Position* player_pos, Treasure** treasures){
         log_err("Failed to open files directory");
 
     // set the 8 treasures locations
-    for (int i = 0; i < 8; i++){
+    unsigned int i = 0;
+    while(i < 8){
         treasures[i] = (Treasure*) malloc(sizeof(Treasure));
         treasures[i]->pos = (Position*) malloc(sizeof(Position));
 
@@ -232,6 +233,7 @@ char** initialize_server_grid(Position* player_pos, Treasure** treasures){
             return NULL;
         }
         strcpy(treasures[i]->file_name, entry->d_name);
+        i++;
     }
     
     return grid;
@@ -287,7 +289,6 @@ void process_message(kermit_protocol_header* header, char** grid, Position* play
     }
 
     if (!file_name) {
-        log_err("No treasure found at player position (%d, %d)", player_pos->x, player_pos->y);
         return;
     }
 

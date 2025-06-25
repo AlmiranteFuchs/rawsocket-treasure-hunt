@@ -280,6 +280,7 @@ void listen_to_server(int sock, char* interface, unsigned char server_mac[6], ch
 
         while ((temp = get_first_in_line_receive_buffer()) != NULL) {
             process_message(temp);
+            checkIfInTreasure(grid, player_pos);
             destroy_header(temp);
         }
     }
@@ -401,6 +402,7 @@ void process_message(kermit_protocol_header* header) {
                 case 8: {
                     log_info("# Starting to receive data");
                     log_msg_v("filename: %s\n", header->data);
+
                     if(create_file(header)){
                         log_msg("Sending ACK\n");
                         send_ack_or_nack(g_sock, g_interface, g_server_mac, header, ACK);
@@ -496,6 +498,13 @@ void process_message(kermit_protocol_header* header) {
         default:
             log_err("Unknown state: %d\n", state);
             break;
+    }
+}
+
+void checkIfInTreasure(char** grid, Position* player_pos) {
+    if (state == STATE_DATA_TRANSFER) {
+        grid[player_pos->x][player_pos->y] = EVENT;
+        log_info("Treasure found at (%d, %d)", player_pos->x, player_pos->y);
     }
 }
 

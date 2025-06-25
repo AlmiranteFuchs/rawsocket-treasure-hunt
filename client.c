@@ -6,8 +6,8 @@ int main(){
 
     // Calls client startup
 
-    // initialize_connection_context("eno1", 8080);
-    initialize_connection_context("veth1", 8080);
+    initialize_connection_context("enp3s0", 8080);
+    // initialize_connection_context("veth1", 8080);
     client();
     return 0;
 }

@@ -108,7 +108,8 @@ int move_player(char** grid, Position* player_pos, char direction) {
     if (grid[new_x][new_y] == EVENT) {
         log_info("# # Found a treasure!");
     }else{
-        grid[player_pos->x][player_pos->y] = FOUND;
+        if (grid[player_pos->x][player_pos->y] != EVENT)
+            grid[player_pos->x][player_pos->y] = FOUND;
         grid[new_x][new_y] = PLAYER;
     }
 
