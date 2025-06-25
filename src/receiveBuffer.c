@@ -21,14 +21,12 @@ unsigned int is_header_on_receive_buffer(kermit_protocol_header *header) {
     return 0; // Buffer is empty
   }
 
-  unsigned int seq = convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE);
-  unsigned int type = convert_binary_to_decimal(header->type, TYPE_SIZE);
+  unsigned int seq = (unsigned int) header->sequence;
+  unsigned int type = (unsigned int) header->type;
 
   for (unsigned int i = 0; global_receive_buffer[i] != NULL; i++) {
-    unsigned int temp_seq = convert_binary_to_decimal(
-        global_receive_buffer[i]->sequence, SEQUENCE_SIZE);
-    unsigned int temp_type =
-        convert_binary_to_decimal(global_receive_buffer[i]->type, TYPE_SIZE);
+    unsigned int temp_seq = (unsigned int) global_receive_buffer[i]->sequence;
+    unsigned int temp_type = (unsigned int) global_receive_buffer[i]->type;
 
     if (temp_seq == seq && temp_type == type) {
       return 1; // Header found in the buffer
@@ -62,13 +60,12 @@ unsigned int update_receive_buffer(kermit_protocol_header *header) {
   }
 
   // Converte sequência e tipo para decimal para comparação
-  unsigned int seq = convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE);
+  unsigned int seq = (unsigned int) header->sequence;
 
   // Encontra a posição correta para inserir o cabeçalho
   unsigned int i = 0;
   while (global_receive_buffer[i] != NULL && i < RECEIVE_BUFFER_SIZE) {
-    unsigned int temp_seq = convert_binary_to_decimal(
-        global_receive_buffer[i]->sequence, SEQUENCE_SIZE);
+    unsigned int temp_seq = (unsigned int) global_receive_buffer[i]->sequence;
 
     // Verifica se o cabeçalho atual é maior que o cabeçalho no buffer
     if (!checkIfNumberIsBigger(seq, temp_seq)) {
@@ -109,25 +106,25 @@ kermit_protocol_header *get_first_in_line_receive_buffer() {
   return first_header;
 }
 
-void print_receive_buffer() {
-  if (global_receive_buffer == NULL) {
-    printf("Receive buffer is not initialized.\n");
-    return;
-  }
+// void print_receive_buffer() {
+//   if (global_receive_buffer == NULL) {
+//     printf("Receive buffer is not initialized.\n");
+//     return;
+//   }
 
-  printf("Receive Buffer:\n");
-  for (unsigned int i = 0; global_receive_buffer[i] != NULL; i++) {
-    kermit_protocol_header *header = global_receive_buffer[i];
-    printf("Header %u:\n", i);
-    // printf("  Start: %.*s\n", START_SIZE, header->start);
-    // printf("  Size: %.*s\n", SIZE_SIZE, header->size);
-    printf("  Sequence: %.*s\n", SEQUENCE_SIZE, header->sequence);
-    printf("  Type: %.*s\n", TYPE_SIZE, header->type);
-    // printf("  Checksum: %.*s\n", CHECKSUM_SIZE, header->checksum);
-    // if (header->data) {
-    //     printf("  Data: %s\n", header->data);
-    // } else {
-    //     printf("  Data: NULL\n");
-    // }
-  }
-}
+//   printf("Receive Buffer:\n");
+//   for (unsigned int i = 0; global_receive_buffer[i] != NULL; i++) {
+//     kermit_protocol_header *header = global_receive_buffer[i];
+//     printf("Header %u:\n", i);
+//     // printf("  Start: %.*s\n", START_SIZE, header->start);
+//     // printf("  Size: %.*s\n", SIZE_SIZE, header->size);
+//     printf("  Sequence: %.*s\n", SEQUENCE_SIZE, header->sequence);
+//     printf("  Type: %.*s\n", TYPE_SIZE, header->type);
+//     // printf("  Checksum: %.*s\n", CHECKSUM_SIZE, header->checksum);
+//     // if (header->data) {
+//     //     printf("  Data: %s\n", header->data);
+//     // } else {
+//     //     printf("  Data: NULL\n");
+//     // }
+//   }
+// }

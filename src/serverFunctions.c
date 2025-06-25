@@ -28,7 +28,7 @@ int send_package_until_ack(int sock, char* interface, unsigned char* mac,
         }
 
         if (attempt > 0) {
-            unsigned int seq = convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE);
+            unsigned int seq = (unsigned int) header->sequence;
             log_info("Resending package #%d, attempt #%d",seq, attempt);
         }
         send_package(sock, interface, mac, message, message_size);
@@ -68,25 +68,27 @@ unsigned int wait_for_ack_or_nack(kermit_protocol_header *sent_header) {
 
     receive_and_buffer_packet(); // Update buffer
     kermit_protocol_header *response = get_first_in_line_receive_buffer();
-
-    if (response == NULL)
-      continue; // Try again
+    
+    if (response == NULL){
+        continue; // Try again
+    }
+    printf("Server received packet: type=%d\n", (int) response->type);
 
     // Check if ACK/NACK and if matches the sequence
-    if (strncmp((char*)response->type, ACK, TYPE_SIZE) == 0) {
-        if (memcmp(response->sequence, sent_header->sequence, SEQUENCE_SIZE) == 0) {
+    if (response->type == ACK) {
+        if (response->sequence == sent_header->sequence) {
             destroy_header(response);
             return 1;
         }
-    } else if (strncmp((char*)response->type, NAK, TYPE_SIZE) == 0) {
-        if (memcmp(response->sequence, sent_header->sequence, SEQUENCE_SIZE) == 0) {
-            log_info("Received NACK for seq: #%d", convert_binary_to_decimal(response->sequence, SEQUENCE_SIZE));
+    } else if (response->type == NAK) {
+        if (response->sequence == sent_header->sequence) {
+            log_info("Received NACK for seq: #%d", (int) response->sequence);
             destroy_header(response);
             return 0;
         }
-    } else if (strncmp((char*)response->type, ERROR, TYPE_SIZE) == 0) {
-        if (memcmp(response->sequence, sent_header->sequence, SEQUENCE_SIZE) == 0) {
-            log_info("Received ERROR for seq: #%d", convert_binary_to_decimal(response->sequence, SEQUENCE_SIZE));
+    } else if (response->type == ERROR) {
+        if (response->sequence == sent_header->sequence) {
+            log_info("Received ERROR for seq: #%d", (int) response->sequence);
             destroy_header(response);
             return 2;
         }
@@ -99,8 +101,6 @@ unsigned int wait_for_ack_or_nack(kermit_protocol_header *sent_header) {
 }
 
 
-
-
 void receive_and_buffer_packet() {
     unsigned char buffer[4096];
     struct sockaddr_ll sender_addr;
@@ -111,8 +111,16 @@ void receive_and_buffer_packet() {
     if (header == NULL) return;
 
     if (last_header && check_if_same(header, last_header)) {
-        destroy_header(header);
-        return;
+      log_msg("Received duplicate header, re-sending the last packet...");
+      if (global_header_buffer) {
+        char* message = generate_message(global_header_buffer);
+        unsigned int message_size = getHeaderSize(global_header_buffer);
+
+        send_package(g_server_sock, g_server_interface, g_client_mac, (const unsigned char*) message, message_size);
+        free((void*) message);
+      }
+      destroy_header(header);
+      return;
     }
 
     if (is_header_on_receive_buffer(header)) {
@@ -123,8 +131,7 @@ void receive_and_buffer_packet() {
     if (!checksum_if_valid(header)) {
         log_err("Received packet with checksum error");
   
-        log_msg("Sending NACK for seq: #%d",
-        convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE));
+        log_msg("Sending NACK for seq: #%d", (int) header->sequence);
         send_ack_or_nack(g_server_sock, g_server_interface, g_client_mac, header, NAK);
   
         destroy_header(header);
@@ -153,7 +160,7 @@ char* obtain_client_mac(char* interface){
     initialize_receive_buffer();
 
     unsigned char broadcast_mac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-    kermit_protocol_header* header = create_header((unsigned char*) "0001010", (unsigned char*) MAC, g_self_mac);
+    kermit_protocol_header* header = create_header((unsigned char) 6, (unsigned char) MAC, g_self_mac);
     char* message = generate_message(header);
     unsigned int message_size = getHeaderSize(header);
 
@@ -170,7 +177,7 @@ char* obtain_client_mac(char* interface){
 
         kermit_protocol_header* temp = get_first_in_line_receive_buffer();
         if (temp != NULL) {
-            if (strncmp((char*)temp->type, MAC, TYPE_SIZE) == 0) {
+            if (temp->type == MAC) {
                 memcpy(g_client_mac, temp->data, 6);
                 log_info("Received MAC response");
                 send_ack_or_nack(g_server_sock, g_server_interface, g_client_mac, temp, ACK);
@@ -218,21 +225,20 @@ char** initialize_server_grid(Position* player_pos, Treasure** treasures){
         }
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
             continue;
+        treasures[i]->file_name = malloc(strlen(entry->d_name) + 1);
 
-        treasures[i]->file_name = (char*) malloc(sizeof(entry));
+        if (!treasures[i]->file_name){
+            log_err("Failed to allocate memory for file name");
+            return NULL;
+        }
         strcpy(treasures[i]->file_name, entry->d_name);
     }
     
     return grid;
 }
 
-unsigned int isPlayerOnTreasure(char** grid, Position* player_pos){
-    log_msg_v("Grid[%d][%d]: %c", player_pos->x, player_pos->y, grid[player_pos->x][player_pos->y]);
-    return (grid[player_pos->x][player_pos->y] == EVENT);
-}
-
 void process_message(kermit_protocol_header* header, char** grid, Position* player_pos, Treasure** treasures){
-    unsigned int type = convert_binary_to_decimal(header->type, TYPE_SIZE);
+    unsigned int type = (int) header->type;
     unsigned char move_type;
 
     switch (type) {
@@ -268,10 +274,7 @@ void process_message(kermit_protocol_header* header, char** grid, Position* play
         return;
     }
 
-    char* file_name;
-
-    if (!isPlayerOnTreasure(grid, player_pos))
-        return;
+    char* file_name = NULL;
 
     // Removes being found after being found
     grid[player_pos->x][player_pos->y] = FOUND;
@@ -283,6 +286,11 @@ void process_message(kermit_protocol_header* header, char** grid, Position* play
         }
     }
 
+    if (!file_name) {
+        log_err("No treasure found at player position (%d, %d)", player_pos->x, player_pos->y);
+        return;
+    }
+
     char* file_path = malloc(strlen("./objetos/") + strlen(file_name) + 1);
     if (file_path == NULL) {
         log_err("Failed to allocate memory for file path");
@@ -290,14 +298,15 @@ void process_message(kermit_protocol_header* header, char** grid, Position* play
     }
     sprintf(file_path, "./objetos/%s", file_name);
     send_file(file_path);
+    free(file_path); 
 }
 
-int send_filename(char* filename, unsigned char* type){
+int send_filename(char* filename, unsigned char type){
     // copy the size of the filename into size
     unsigned int filename_length = strlen(filename);
     unsigned int data_size = filename_length + 1; // include null terminator!
 
-    unsigned char* size_bin = convert_decimal_to_binary(data_size, SIZE_SIZE);
+    unsigned char size_bin = (unsigned char) data_size;
 
     unsigned char* filename_data = malloc(data_size);
     memcpy(filename_data, filename, filename_length);
@@ -308,7 +317,6 @@ int send_filename(char* filename, unsigned char* type){
 
     if (header == NULL) {
         log_err("Failed to create header");
-        free(size_bin);
         return 0;
     }
 
@@ -318,8 +326,6 @@ int send_filename(char* filename, unsigned char* type){
     log_info("Sending file name to client");
     int send_result = send_package_until_ack(g_server_sock, g_server_interface, g_client_mac, message, message_size, header);
 
-    // Clean up
-    free(size_bin);
     free((void*) message); // only if generate_message() mallocs
     destroy_header(header);
 
@@ -355,11 +361,9 @@ int send_file_size(FILE* file) {
     }
 
     // Convert data_len to 7-bit ASCII binary string for size field
-    unsigned char size_field[SIZE_SIZE];
-    unsigned char* bin_size = convert_decimal_to_binary(data_len, SIZE_SIZE);
-    memcpy(size_field, bin_size, SIZE_SIZE);
+    unsigned char bin_size = (unsigned char) data_len;
 
-    kermit_protocol_header* header = create_header(size_field, (unsigned char*) SIZE, data);
+    kermit_protocol_header* header = create_header(bin_size, (unsigned char) SIZE, data);
     if (header == NULL) {
         log_err("Failed to create header for file size");
         return 0;
@@ -372,16 +376,14 @@ int send_file_size(FILE* file) {
     int send_result = send_package_until_ack(g_server_sock, g_server_interface, g_client_mac, message, message_size, header);
 
     destroy_header(header);
-    free(bin_size);
     free((void*) message); 
     return send_result;
 }
 
 void send_end_of_file(){
-    unsigned char end_type[TYPE_SIZE];
-    unsigned char size[SIZE_SIZE]; // Size is 0 for end of file
-    memcpy(end_type, END, TYPE_SIZE);
-    memcpy(size, "0000000", SIZE_SIZE);
+    unsigned char end_type = END;
+    unsigned char size = (unsigned char) 0; 
+
     kermit_protocol_header* header = create_header(size, end_type, NULL);
     if (header == NULL) {
         log_err("Failed to create end of file header");
@@ -398,9 +400,9 @@ void send_end_of_file(){
     free((void*) message); // only if generate_message() mallocs
 }
 
-void send_file_packages(char* filename, unsigned char* type){
+void send_file_packages(char* filename, unsigned char type){
     log_info("Starting to send data over to client\n");
-    if (filename == NULL || type == NULL) {
+    if (filename == NULL) {
         log_err("Filename or type is NULL");
         return;
     }
@@ -436,13 +438,12 @@ void send_file_packages(char* filename, unsigned char* type){
     log_msg("Sending file data to client:");
 
     for (int sequence = 0; (bytes_read = fread(data, 1, MAX_DATA_SIZE, file)) > 0; sequence++) {
-        unsigned char size_bin[SIZE_SIZE];
+        unsigned char size_bin;
 
         unsigned int size_decimal = (unsigned int) bytes_read;
-        unsigned char* size_decimal_bin = convert_decimal_to_binary(size_decimal, SIZE_SIZE);
-        memcpy(size_bin, size_decimal_bin, SIZE_SIZE);
+        size_bin = (unsigned char) size_decimal;
 
-        kermit_protocol_header* header = create_header(size_bin, (unsigned char*) DATA, data);
+        kermit_protocol_header* header = create_header(size_bin, (unsigned char) DATA, data);
         if (header == NULL) {
             log_err("Failed to create header for data");
             fclose(file);
@@ -452,17 +453,15 @@ void send_file_packages(char* filename, unsigned char* type){
         const unsigned char* message = generate_message(header);
         unsigned int message_size = getHeaderSize(header);
 
-        log_info("Sending File data for seq: #%d", convert_binary_to_decimal(header->sequence, SEQUENCE_SIZE));
+        log_info("Sending File data for seq: #%d", (int) header->sequence);
         send_package_until_ack(g_server_sock, g_server_interface, g_client_mac, message, message_size, header);
 
-        free(size_decimal_bin);
         destroy_header(header);
         free((void*) message);
     }
 
     send_end_of_file();
 
-    free(filename);
     fclose(file);
 }
 
@@ -474,13 +473,13 @@ void send_file(char* filename){
 
     switch (extension[0]){
         case 't':   // text file
-            send_file_packages(filename, (unsigned char*) TEXT_ACK_NAME);
+            send_file_packages(filename, (unsigned char) TEXT_ACK_NAME);
             break;
         case 'm':   // video file
-            send_file_packages(filename, (unsigned char*) VIDEO_ACK_NAME);
+            send_file_packages(filename, (unsigned char) VIDEO_ACK_NAME);
             break;
         case 'j':   // image file
-            send_file_packages(filename, (unsigned char*) IMAGE_ACK_NAME);
+            send_file_packages(filename, (unsigned char) IMAGE_ACK_NAME);
             break;
         default:
             log_err("Unknown file type: %s", filename);
@@ -501,11 +500,15 @@ void server(){
 }
 
 void initialize_connection_context(char* interface, int port) {
+    g_server_interface = interface;
+
     g_server_sock = create_raw_socket();
     bind_raw_socket(g_server_sock, interface, port);
-
+    
     get_mac_address(g_server_sock, interface, g_self_mac);
     obtain_client_mac(g_server_interface);
+    
+
 
     // g_server_interface = interface;
     // memcpy(g_client_mac, client_mac, 6);
