@@ -224,6 +224,7 @@ char** initialize_server_grid(Position* player_pos, Treasure** treasures){
             log_err("Not enough files in the directory");
             return NULL;
         }
+        printf("Found file: %s\n", entry->d_name);
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
             continue;
         treasures[i]->file_name = malloc(strlen(entry->d_name) + 1);
