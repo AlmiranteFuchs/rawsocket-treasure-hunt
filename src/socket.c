@@ -233,7 +233,7 @@ void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender
         exit(-1);
     }
 
-    if (bytes >= 15 && buffer[12] == 0x81 && buffer[13] == 0xFF) {
+    if (bytes >= 15 && buffer[12] == 0x81 && buffer[13] == 0xF0) {
         // Check if MSB of next byte is set
         if (buffer[14] & 0x80) {
             log_info("Undoing patched VLAN-like sequence 0x81F0 to 0x8100");
@@ -361,7 +361,7 @@ kermit_protocol_header* create_header(unsigned char size, unsigned char type, un
             if (data_size >= 3 && (header->data[0] == 0x81 || header->data[0] == 0x88) && header->data[1] == 0x00) {
                 // Mark a flag in header->data[2] (first byte after VLAN tag)
                 header->data[2] |= 0x80; // set MSB
-                header->data[1] = 0xFF;  // replace 0x00 → 0xF0
+                header->data[1] = 0xF0;  // replace 0x00 → 0xF0
             }
         }
     } else {
