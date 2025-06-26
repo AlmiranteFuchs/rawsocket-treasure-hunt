@@ -233,13 +233,15 @@ void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender
         exit(-1);
     }
 
-    if (bytes >= 15 && buffer[12] == 0x81 && buffer[13] == 0xF0) {
-        // Check if MSB of next byte is set
-        if (buffer[14] & 0x80) {
-            log_info("Undoing patched VLAN-like sequence 0x81F0 to 0x8100");
-            buffer[13] = 0x00;       // restore original 0x00
-            buffer[14] &= 0x7F;      // clear flag
-        }
+    // Check for VLAN tag and 0xFF after it
+    if (bytes >= 15 && 
+        ((buffer[12] == 0x81 && buffer[13] == 0x00) || buffer[12] == 0x88) &&
+        buffer[14] == 0xFF) {
+        log_info("Undoing VLAN patch: removing 0xFF after VLAN tag");
+        // Shift the rest of the buffer left by one byte
+        memmove(buffer + 14, buffer + 15, bytes - 15);
+        // Optionally, zero out the last byte
+        buffer[bytes - 1] = 0;
     }
 }
 
@@ -351,17 +353,28 @@ kermit_protocol_header* create_header(unsigned char size, unsigned char type, un
     //     header->data = NULL;
     // }
 
+
+
     unsigned int data_size = (int) size;
     if (data != NULL) {
-        header->data = malloc(data_size);
-        if (header->data != NULL) {
-            memcpy(header->data, data, data_size);
-
-            // VLAN spoofing prevention and encoding flag (migrated from send_package)
-            if (data_size >= 3 && (header->data[0] == 0x81 || header->data[0] == 0x88) && header->data[1] == 0x00) {
-                // Mark a flag in header->data[2] (first byte after VLAN tag)
-                header->data[2] |= 0x80; // set MSB
-                header->data[1] = 0xF0;  // replace 0x00 → 0xF0
+        // Check for VLAN tag at the start of data
+        if (data_size >= 4 && 
+            ((data[0] == 0x81 && data[1] == 0x00) || (data[0] == 0x88))) {
+            // Insert 0xFF after the VLAN tag (after data[1])
+            unsigned int new_size = data_size + 1;
+            header->data = malloc(new_size);
+            if (header->data != NULL) {
+                header->data[0] = data[0];
+                header->data[1] = data[1];
+                header->data[2] = 0xFF;
+                memcpy(header->data + 3, data + 2, data_size - 2);
+                header->size = new_size; // update size
+                data_size = new_size;
+            }
+        } else {
+            header->data = malloc(data_size);
+            if (header->data != NULL) {
+                memcpy(header->data, data, data_size);
             }
         }
     } else {
