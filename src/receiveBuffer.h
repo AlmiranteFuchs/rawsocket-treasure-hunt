@@ -11,4 +11,6 @@ unsigned int update_receive_buffer(kermit_protocol_header* header);
 kermit_protocol_header* get_first_in_line_receive_buffer();
 void print_receive_buffer();
 
+void destroy_receive_buffer();
+
 #endif

@@ -106,25 +106,19 @@ kermit_protocol_header *get_first_in_line_receive_buffer() {
   return first_header;
 }
 
-// void print_receive_buffer() {
-//   if (global_receive_buffer == NULL) {
-//     printf("Receive buffer is not initialized.\n");
-//     return;
-//   }
 
-//   printf("Receive Buffer:\n");
-//   for (unsigned int i = 0; global_receive_buffer[i] != NULL; i++) {
-//     kermit_protocol_header *header = global_receive_buffer[i];
-//     printf("Header %u:\n", i);
-//     // printf("  Start: %.*s\n", START_SIZE, header->start);
-//     // printf("  Size: %.*s\n", SIZE_SIZE, header->size);
-//     printf("  Sequence: %.*s\n", SEQUENCE_SIZE, header->sequence);
-//     printf("  Type: %.*s\n", TYPE_SIZE, header->type);
-//     // printf("  Checksum: %.*s\n", CHECKSUM_SIZE, header->checksum);
-//     // if (header->data) {
-//     //     printf("  Data: %s\n", header->data);
-//     // } else {
-//     //     printf("  Data: NULL\n");
-//     // }
-//   }
-// }
+void destroy_receive_buffer(){
+  if (global_receive_buffer == NULL) {
+    return;
+  }
+
+  while (global_receive_buffer[0] != NULL) {
+    kermit_protocol_header *header = get_first_in_line_receive_buffer();
+    if (header != NULL) {
+      destroy_header(header);
+    }
+  }
+
+  free(global_receive_buffer);
+  global_receive_buffer = NULL;
+}

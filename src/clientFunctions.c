@@ -70,17 +70,17 @@ void receive_and_buffer_packet() {
 
     //  Duplicate validation
     if (last_header && check_if_same(header, last_header)) {
-      log_msg("Received duplicate header, re-sending the last packet...");
-      if (global_header_buffer) {
-        char* message = generate_message(global_header_buffer);
-        unsigned int message_size = getHeaderSize(global_header_buffer);
+        // Only re-send ACK for duplicates to avoid NAK loops
+        if (global_header_buffer && global_header_buffer->type == ACK){
+            log_msg("Received duplicate header, re-sending last ACK if applicable...");
+            send_ack_or_nack(g_sock, g_interface, g_server_mac, header, ACK);
+        }
 
-        send_package(g_sock, g_interface, g_server_mac, (const unsigned char*) message, message_size);
-        free((void*) message);
-      }
-      destroy_header(header);
-      return;
+        destroy_header(header);
+        return;
     }
+
+    
     if (is_header_on_receive_buffer(header)) {
       log_msg("Filtered as already in buffer: ");
       destroy_header(header);
@@ -508,6 +508,7 @@ void checkIfInTreasure(char** grid, Position* player_pos) {
     }
 }
 
+
 void client(){
     // Initializes game logic
     Position* player_pos = initialize_player();
@@ -548,6 +549,18 @@ void client(){
         }
         }
     }
+
+    destroy_player(player_pos);
+    destroy_grid(grid);
+    // free(g_interface);
+
+    destroy_header(last_header);
+    destroy_header(global_header_buffer);
+    destroy_receive_buffer();
+
+    close(g_sock);
+    log_info("Client connection closed.");
+    exit(0);
 }
 
 void send_mac_address(){

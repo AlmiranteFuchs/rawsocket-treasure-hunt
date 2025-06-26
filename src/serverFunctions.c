@@ -110,17 +110,15 @@ void receive_and_buffer_packet() {
     kermit_protocol_header* header = read_bytes_into_header(buffer);
     if (header == NULL) return;
 
-    if (last_header && check_if_same(header, last_header)) {
-      log_msg("Received duplicate header, re-sending the last packet...");
-      if (global_header_buffer) {
-        char* message = generate_message(global_header_buffer);
-        unsigned int message_size = getHeaderSize(global_header_buffer);
 
-        send_package(g_server_sock, g_server_interface, g_client_mac, (const unsigned char*) message, message_size);
-        free((void*) message);
-      }
-      destroy_header(header);
-      return;
+    if (last_header && check_if_same(header, last_header)) {
+        log_msg("Received duplicate header, re-sending last ACK/NACK...");
+        // Re-send the last ACK/NACK for this sequence
+        if (global_header_buffer && (global_header_buffer->type == ACK))
+            send_ack_or_nack(g_server_sock, g_server_interface, g_client_mac, header, global_header_buffer->type);
+
+        destroy_header(header);
+        return;
     }
 
     if (is_header_on_receive_buffer(header)) {
@@ -424,14 +422,12 @@ void send_file_packages(char* filename, unsigned char type){
     char* f_name = strrchr(filename, '/');
     if (f_name) f_name++;
 
-    if(send_filename(f_name, type) == 2){
-        log_err("Failed to send file name");
-        return;
+    while (send_filename(f_name, type) == 2){
+        log_err("Failed to send file name, retrying...");
     }
 
-    if(send_file_size(file) == 2){
-        log_err("Failed to send file size");
-        return;
+    while (send_file_size(file) == 2){
+        log_err("Failed to send file size, retrying...");
     }
 
     unsigned char data[MAX_DATA_SIZE];
@@ -456,7 +452,9 @@ void send_file_packages(char* filename, unsigned char type){
         unsigned int message_size = getHeaderSize(header);
 
         log_info("Sending File data for seq: #%d", (int) header->sequence);
-        send_package_until_ack(g_server_sock, g_server_interface, g_client_mac, message, message_size, header);
+        while (send_package_until_ack(g_server_sock, g_server_interface, g_client_mac, message, message_size, header) == 2){
+            log_err("Failed to send file data, retrying...");
+        }
 
         destroy_header(header);
         free((void*) message);
@@ -489,6 +487,21 @@ void send_file(char* filename){
     }
 }
 
+
+void destroy_treasures(Treasure** treasures) {
+    for (unsigned int i = 0; i < 8; i++) {
+        if (treasures[i] != NULL) {
+            if (treasures[i]->pos != NULL) {
+                free(treasures[i]->pos);
+            }
+            if (treasures[i]->file_name != NULL) {
+                free(treasures[i]->file_name);
+            }
+            free(treasures[i]);
+        }
+    }
+}
+
 void server(){
     // Initializes game logic
     Treasure** treasures = malloc(sizeof(Treasure*) * 8);
@@ -499,6 +512,20 @@ void server(){
     // initialize_receive_buffer();
 
     listen_server(treasures, player_pos, grid);
+
+    listen_server(treasures, player_pos, grid);
+
+    destroy_treasures(treasures);
+    destroy_player(player_pos);
+    destroy_grid(grid);
+
+    close(g_server_sock);
+
+    destroy_header(last_header);
+    destroy_header(global_header_buffer);
+    destroy_receive_buffer();
+    log_info("Server connection closed.");
+    exit(0);
 }
 
 void initialize_connection_context(char* interface, int port) {

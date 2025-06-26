@@ -132,6 +132,47 @@ void send_ack_or_nack(int sock, char* interface, unsigned char server_mac[6], ke
     destroy_header(response);
 }
 
+// void send_package(int sock, char* interface, unsigned char dest_mac[6], const unsigned char* message, size_t message_len) {
+//     struct sockaddr_ll addr = {0};
+//     addr.sll_family = AF_PACKET;
+//     addr.sll_protocol = htons(ETH_P_ALL);
+//     addr.sll_ifindex = if_nametoindex(interface);
+//     addr.sll_halen = ETH_ALEN;
+//     memcpy(addr.sll_addr, dest_mac, ETH_ALEN);
+
+//     // need to ensure the message is at least 14 bytes
+//     if (message_len < 14){
+//         // add padding
+//         unsigned char padding[14 - message_len];
+//         memset(padding, 0, sizeof(padding));
+//         unsigned char* padded_message = malloc(14);
+//         if (padded_message == NULL) {
+//             log_err("Failed to allocate memory for padded message\n");
+//             return;
+//     }
+
+//         memcpy(padded_message, message, message_len);
+//         memcpy(padded_message + message_len, padding, sizeof(padding));
+//         ssize_t sent = sendto(sock, padded_message, 14, 0, (struct sockaddr*)&addr, sizeof(addr));
+//         if (sent == -1) {
+//             perror("sendto failed");
+//             free(padded_message);
+//             return;
+//         }
+//         log_msg_v("Sent %zd bytes with padding\n", sent);
+//         free(padded_message);
+
+//         return;
+//     }
+
+//     ssize_t sent = sendto(sock, message, message_len, 0, (struct sockaddr *)&addr, sizeof(addr));
+//     if (sent == -1){
+//         perror("sendto failed");
+//         return;
+//     }
+//     log_msg_v("Sent %zd bytes with padding\n", sent);
+// }
+
 void send_package(int sock, char* interface, unsigned char dest_mac[6], const unsigned char* message, size_t message_len) {
     struct sockaddr_ll addr = {0};
     addr.sll_family = AF_PACKET;
@@ -140,48 +181,68 @@ void send_package(int sock, char* interface, unsigned char dest_mac[6], const un
     addr.sll_halen = ETH_ALEN;
     memcpy(addr.sll_addr, dest_mac, ETH_ALEN);
 
-    // need to ensure the message is at least 14 bytes
-    if (message_len < 14){
-        // add padding
-        unsigned char padding[14 - message_len];
-        memset(padding, 0, sizeof(padding));
-        unsigned char* padded_message = malloc(14);
-        if (padded_message == NULL) {
-            log_err("Failed to allocate memory for padded message\n");
-            return;
+    unsigned char* msg_to_send = malloc(message_len);
+    if (!msg_to_send) {
+        log_err("Memory allocation failed in send_package");
+        return;
+    }
+    memcpy(msg_to_send, message, message_len);
+
+    // VLAN spoofing prevention and encoding flag
+    if (message_len >= 15 && msg_to_send[12] == 0x81 && msg_to_send[13] == 0x00) {
+        log_info("Detected accidental VLAN sequence 0x8100, patching...");
+
+        // Mark a flag in message[14] (first byte after header)
+        msg_to_send[14] |= 0x80; // set MSB
+        msg_to_send[13] = 0xF0;  // replace 0x00 → 0xF0
     }
 
-        memcpy(padded_message, message, message_len);
-        memcpy(padded_message + message_len, padding, sizeof(padding));
-        ssize_t sent = sendto(sock, padded_message, 14, 0, (struct sockaddr*)&addr, sizeof(addr));
-        if (sent == -1) {
-            perror("sendto failed");
-            free(padded_message);
+    if (message_len < 14) {
+        unsigned char* padded = calloc(1, 14);
+        if (!padded) {
+            free(msg_to_send);
             return;
         }
-        log_msg_v("Sent %zd bytes with padding\n", sent);
-        free(padded_message);
+        memcpy(padded, msg_to_send, message_len);
 
+        ssize_t sent = sendto(sock, padded, 14, 0, (struct sockaddr*)&addr, sizeof(addr));
+        free(padded);
+        free(msg_to_send);
         return;
     }
 
-    ssize_t sent = sendto(sock, message, message_len, 0, (struct sockaddr *)&addr, sizeof(addr));
-    if (sent == -1){
-        perror("sendto failed");
-        return;
-    }
-    log_msg_v("Sent %zd bytes with padding\n", sent);
+    ssize_t sent = sendto(sock, msg_to_send, message_len, 0, (struct sockaddr *)&addr, sizeof(addr));
+    free(msg_to_send);
 }
 
+
+// void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender_addr, socklen_t* addr_len){
+//     ssize_t bytes = recvfrom(sock, buffer, 4096, 0,
+//                             (struct sockaddr*)sender_addr, addr_len);
+//     if (bytes == -1) {
+//         perror("recvfrom failed");
+//         exit(-1);
+//     }
+//     log_msg_v("Received %zd bytes\n", bytes);
+// }
+
 void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender_addr, socklen_t* addr_len){
-    ssize_t bytes = recvfrom(sock, buffer, 4096, 0,
-                            (struct sockaddr*)sender_addr, addr_len);
+    ssize_t bytes = recvfrom(sock, buffer, 4096, 0, (struct sockaddr*)sender_addr, addr_len);
     if (bytes == -1) {
         perror("recvfrom failed");
         exit(-1);
     }
-    log_msg_v("Received %zd bytes\n", bytes);
+
+    if (bytes >= 15 && buffer[12] == 0x81 && buffer[13] == 0xF0) {
+        // Check if MSB of next byte is set
+        if (buffer[14] & 0x80) {
+            log_info("Undoing patched VLAN-like sequence 0x81F0 to 0x8100");
+            buffer[13] = 0x00;       // restore original 0x00
+            buffer[14] &= 0x7F;      // clear flag
+        }
+    }
 }
+
 
 int get_mac_address(int sock, const char* ifname, unsigned char* mac){
     struct ifreq ifr;
