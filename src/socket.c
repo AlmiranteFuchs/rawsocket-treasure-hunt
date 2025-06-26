@@ -188,14 +188,14 @@ void send_package(int sock, char* interface, unsigned char dest_mac[6], const un
     }
     memcpy(msg_to_send, message, message_len);
 
-    // VLAN spoofing prevention and encoding flag
-    if (message_len >= 15 && msg_to_send[12] == 0x81 && msg_to_send[13] == 0x00) {
-        log_info("Detected accidental VLAN sequence 0x8100, patching...");
+    // // VLAN spoofing prevention and encoding flag
+    // if (message_len >= 15 && msg_to_send[12] == 0x81 && msg_to_send[13] == 0x00) {
+    //     log_info("Detected accidental VLAN sequence 0x8100, patching...");
 
-        // Mark a flag in message[14] (first byte after header)
-        msg_to_send[14] |= 0x80; // set MSB
-        msg_to_send[13] = 0xF0;  // replace 0x00 → 0xF0
-    }
+    //     // Mark a flag in message[14] (first byte after header)
+    //     msg_to_send[14] |= 0x80; // set MSB
+    //     msg_to_send[13] = 0xF0;  // replace 0x00 → 0xF0
+    // }
 
     if (message_len < 14) {
         unsigned char* padded = calloc(1, 14);
@@ -233,7 +233,7 @@ void receive_package(int sock, unsigned char* buffer, struct sockaddr_ll* sender
         exit(-1);
     }
 
-    if (bytes >= 15 && buffer[12] == 0x81 && buffer[13] == 0xF0) {
+    if (bytes >= 15 && buffer[12] == 0x81 && buffer[13] == 0xFF) {
         // Check if MSB of next byte is set
         if (buffer[14] & 0x80) {
             log_info("Undoing patched VLAN-like sequence 0x81F0 to 0x8100");
@@ -341,11 +341,28 @@ kermit_protocol_header* create_header(unsigned char size, unsigned char type, un
     header->type = type;
     
     // Creates data
+    // unsigned int data_size = (int) size;
+    // if (data != NULL) {
+    //     header->data = malloc(data_size);
+    //     if (header->data != NULL) {
+    //         memcpy(header->data, data, data_size);
+    //     }
+    // } else {
+    //     header->data = NULL;
+    // }
+
     unsigned int data_size = (int) size;
     if (data != NULL) {
         header->data = malloc(data_size);
         if (header->data != NULL) {
             memcpy(header->data, data, data_size);
+
+            // VLAN spoofing prevention and encoding flag (migrated from send_package)
+            if (data_size >= 3 && (header->data[0] == 0x81 || header->data[0] == 0x88) && header->data[1] == 0x00) {
+                // Mark a flag in header->data[2] (first byte after VLAN tag)
+                header->data[2] |= 0x80; // set MSB
+                header->data[1] = 0xFF;  // replace 0x00 → 0xF0
+            }
         }
     } else {
         header->data = NULL;
@@ -378,6 +395,7 @@ kermit_protocol_header* create_header(unsigned char size, unsigned char type, un
         }
         global_header_buffer->data = NULL;
     }
+
     
     copy_header_deep(&global_header_buffer, header);
     
