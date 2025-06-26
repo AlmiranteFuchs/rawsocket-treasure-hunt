@@ -384,7 +384,7 @@ kermit_protocol_header* create_header(unsigned char size, unsigned char type, un
     // Manages global buffer
     if (global_header_buffer) {
         unsigned int seq = (int) global_header_buffer->sequence;
-        seq = (seq + 1) % (1 << 1);
+        seq = (seq + 1) % (1 << SEQUENCE_SIZE);
         header->sequence = (unsigned char) seq;
     } else {
         header->sequence = (unsigned char) 0;
